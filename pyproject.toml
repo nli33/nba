@@ -1,0 +1,22 @@
+[project]
+name = "nba"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.5.4",
+    "nba-api>=1.11.4",
+    "numpy>=2.4.6",
+    "pandas>=3.0.3",
+    "pyarrow>=24.0.0",
+    "scikit-learn>=1.9.0",
+    "tqdm>=4.68.3",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.1.0",
+    "ruff>=0.15.17",
+]
