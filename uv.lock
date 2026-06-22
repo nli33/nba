@@ -374,7 +374,7 @@ wheels = [
 [[package]]
 name = "nba"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "nba-api" },
