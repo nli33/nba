@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 nba-ingest = "nba_predictor.data.ingest:main"
+nba-process = "nba_predictor.data.process:main"
 
 [build-system]
 requires = ["setuptools>=69"]
