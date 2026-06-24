@@ -1,0 +1,90 @@
+# NBA Predictor
+
+An NBA game prediction pipeline: ingesting data from nba_api, building processed features from raw data, baseline predictors, and more advanced models (WIP)
+
+## Data Pipeline
+
+Fetch raw NBA API data for one season:
+
+```bash
+uv run nba-ingest 2025-26
+```
+
+Overwrite existing raw parquet files:
+
+```bash
+uv run nba-ingest 2025-26 --overwrite
+```
+
+Build processed game, team-feature, and model-game parquet files:
+
+```bash
+uv run nba-process 2025-26
+```
+
+Overwrite existing processed parquet files:
+
+```bash
+uv run nba-process 2025-26 --overwrite
+```
+
+## Baseline Prediction
+
+Predict one game with a registered baseline predictor:
+
+```bash
+uv run nba-predict season_to_date_net_rating 0022500018
+```
+
+Available baseline predictors:
+
+```text
+home_team
+season_to_date_net_rating
+season_to_date_win_pct
+rolling_10_net_rating
+```
+
+Evaluate one baseline predictor over a full season:
+
+```bash
+uv run nba-evaluate season_to_date_net_rating 2025-26
+```
+
+Evaluate all baseline predictors over a full season:
+
+```bash
+uv run nba-evaluate-baselines 2025-26
+```
+
+## Logistic Regression
+
+Train a logistic regression model on one processed season and save it:
+
+```bash
+uv run nba-train-logistic 2024-25 --output models/logistic_regression_2024-25.pkl
+```
+
+The training command prints the number of rows used/dropped, the intercept, and learned
+coefficients sorted by absolute magnitude.
+
+Inspect a saved model later:
+
+```bash
+uv run nba-inspect-logistic models/logistic_regression_2024-25.pkl
+```
+
+Evaluate the saved model on a different season:
+
+```bash
+uv run nba-evaluate-logistic models/logistic_regression_2024-25.pkl 2025-26
+```
+
+Predict one game with the saved model:
+
+```bash
+uv run nba-predict-logistic models/logistic_regression_2024-25.pkl 0022500018
+```
+
+Single-game logistic predictions include `P(home wins)` when all required pre-game
+features are available.
