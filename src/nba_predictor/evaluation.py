@@ -10,8 +10,20 @@ import pandas as pd
 
 from nba_predictor.prediction import (
     GamePredictor,
+    HomeTeamPredictor,
     PREDICTORS,
+    Rolling10NetRatingPredictor,
+    SeasonToDateNetRatingPredictor,
+    SeasonToDateWinPctPredictor,
     load_model_games,
+)
+
+
+BASELINE_PREDICTORS = (
+    HomeTeamPredictor,
+    SeasonToDateNetRatingPredictor,
+    SeasonToDateWinPctPredictor,
+    Rolling10NetRatingPredictor,
 )
 
 
@@ -100,6 +112,34 @@ def format_evaluation(evaluation: SeasonEvaluation) -> str:
     )
 
 
+def format_baseline_evaluations(evaluations: list[SeasonEvaluation]) -> str:
+    sorted_evaluations = sorted(
+        evaluations,
+        key=lambda evaluation: evaluation.accuracy,
+        reverse=True,
+    )
+    lines = [
+        "Baseline Prediction Evaluation",
+        f"  Season: {evaluations[0].season}",
+        "",
+        (
+            f"{'Predictor':<30} {'Accuracy':>9} {'When picked':>12} "
+            f"{'Correct':>13} {'Picked':>8} {'No pick':>8}"
+        ),
+        "-" * 86,
+    ]
+    for evaluation in sorted_evaluations:
+        lines.append(
+            f"{evaluation.predictor_name:<30} "
+            f"{format_percent(evaluation.accuracy):>9} "
+            f"{format_percent(evaluation.accuracy_when_predicted):>12} "
+            f"{evaluation.correct_predictions:>6,}/{evaluation.games_evaluated:<6,} "
+            f"{evaluation.predictions_made:>8,} "
+            f"{evaluation.null_predictions:>8,}"
+        )
+    return "\n".join(lines)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Evaluate one predictor for one processed NBA season."
@@ -124,3 +164,26 @@ def main() -> None:
         raise SystemExit(1) from None
 
     print(format_evaluation(evaluation))
+
+
+def parse_baselines_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Evaluate all baseline predictors for one processed NBA season."
+    )
+    parser.add_argument("season", help='NBA season, for example "2025-26".')
+    return parser.parse_args()
+
+
+def baselines_main() -> None:
+    """Run all baseline season evaluations."""
+    args = parse_baselines_args()
+    try:
+        evaluations = [
+            evaluate_season(args.season, predictor_class())
+            for predictor_class in BASELINE_PREDICTORS
+        ]
+    except (FileNotFoundError, ValueError) as error:
+        print(f"Unable to evaluate baselines: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    print(format_baseline_evaluations(evaluations))

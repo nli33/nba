@@ -19,6 +19,7 @@ nba-ingest = "nba_predictor.data.ingest:main"
 nba-process = "nba_predictor.data.process:main"
 nba-predict = "nba_predictor.prediction:main"
 nba-evaluate = "nba_predictor.evaluation:main"
+nba-evaluate-baselines = "nba_predictor.evaluation:baselines_main"
 
 [build-system]
 requires = ["setuptools>=69"]
