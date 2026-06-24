@@ -69,6 +69,29 @@ def load_team_game_logs(season: str) -> pd.DataFrame:
     return data
 
 
+def add_estimated_possessions(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.copy()
+    data["EST_POSSESSIONS"] = data["FGA"] + (0.44 * data["FTA"]) - data["OREB"] + data["TOV"]
+    data["OPP_EST_POSSESSIONS"] = (
+        data.groupby("GAME_ID")["EST_POSSESSIONS"].transform("sum")
+        - data["EST_POSSESSIONS"]
+    )
+    return data
+
+
+def net_rating(
+    points_for: pd.Series,
+    possessions_for: pd.Series,
+    points_against: pd.Series,
+    possessions_against: pd.Series,
+) -> pd.Series:
+    offensive_rating = 100 * points_for / possessions_for.where(possessions_for != 0)
+    defensive_rating = 100 * points_against / possessions_against.where(
+        possessions_against != 0
+    )
+    return offensive_rating - defensive_rating
+
+
 def build_games(team_game_logs: pd.DataFrame) -> pd.DataFrame:
     data = add_matchup_sides(team_game_logs)
 
@@ -115,7 +138,7 @@ def build_games(team_game_logs: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_team_game_features(team_game_logs: pd.DataFrame) -> pd.DataFrame:
-    data = add_matchup_sides(team_game_logs)
+    data = add_estimated_possessions(add_matchup_sides(team_game_logs))
     data["WIN"] = (data["WL"] == "W").astype(int)
     data["POINT_DIFF"] = data["PLUS_MINUS"]
     data["PTS_AGAINST"] = data["PTS"] - data["PLUS_MINUS"]
@@ -148,6 +171,15 @@ def build_team_game_features(team_game_logs: pd.DataFrame) -> pd.DataFrame:
     data["SEASON_TO_DATE_POINT_DIFF"] = by_team["POINT_DIFF"].transform(
         lambda values: values.shift(1).expanding().mean()
     )
+    season_to_date_sums = by_team[
+        ["PTS", "EST_POSSESSIONS", "PTS_AGAINST", "OPP_EST_POSSESSIONS"]
+    ].transform(lambda values: values.shift(1).expanding().sum())
+    data["SEASON_TO_DATE_NET_RATING"] = net_rating(
+        season_to_date_sums["PTS"],
+        season_to_date_sums["EST_POSSESSIONS"],
+        season_to_date_sums["PTS_AGAINST"],
+        season_to_date_sums["OPP_EST_POSSESSIONS"],
+    )
 
     columns = [
         "GAME_ID",
@@ -162,14 +194,25 @@ def build_team_game_features(team_game_logs: pd.DataFrame) -> pd.DataFrame:
         "IS_3_IN_4",
         "SEASON_TO_DATE_WIN_PCT",
         "SEASON_TO_DATE_POINT_DIFF",
+        "SEASON_TO_DATE_NET_RATING",
     ]
     for window in ROLLING_WINDOWS:
+        rolling_sums = by_team[
+            ["PTS", "EST_POSSESSIONS", "PTS_AGAINST", "OPP_EST_POSSESSIONS"]
+        ].transform(lambda values: values.shift(1).rolling(window, min_periods=1).sum())
+        data[f"ROLLING_{window}_NET_RATING"] = net_rating(
+            rolling_sums["PTS"],
+            rolling_sums["EST_POSSESSIONS"],
+            rolling_sums["PTS_AGAINST"],
+            rolling_sums["OPP_EST_POSSESSIONS"],
+        )
         columns.extend(
             [
                 f"ROLLING_{window}_WIN_PCT",
                 f"ROLLING_{window}_PTS_FOR",
                 f"ROLLING_{window}_PTS_AGAINST",
                 f"ROLLING_{window}_POINT_DIFF",
+                f"ROLLING_{window}_NET_RATING",
             ]
         )
 
