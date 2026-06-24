@@ -46,6 +46,41 @@ class GamePredictor(Protocol):
         """Predict one game from a processed model_games row."""
 
 
+def make_prediction(
+    game: pd.Series,
+    predictor_name: str,
+    predicted_team_id: int | None,
+    predicted_team_abbreviation: str | None,
+    reason: str,
+) -> GamePrediction:
+    return GamePrediction(
+        season=str(game["SEASON"]),
+        game_id=str(game["GAME_ID"]),
+        predictor_name=predictor_name,
+        home_team_id=int(game["HOME_TEAM_ID"]),
+        home_team_abbreviation=str(game["HOME_TEAM_ABBREVIATION"]),
+        away_team_id=int(game["AWAY_TEAM_ID"]),
+        away_team_abbreviation=str(game["AWAY_TEAM_ABBREVIATION"]),
+        predicted_team_id=predicted_team_id,
+        predicted_team_abbreviation=predicted_team_abbreviation,
+        reason=reason,
+    )
+
+
+@dataclass(frozen=True)
+class HomeTeamPredictor:
+    name: str = "home_team"
+
+    def predict(self, game: pd.Series) -> GamePrediction:
+        return make_prediction(
+            game=game,
+            predictor_name=self.name,
+            predicted_team_id=int(game["HOME_TEAM_ID"]),
+            predicted_team_abbreviation=str(game["HOME_TEAM_ABBREVIATION"]),
+            reason="Always predicts the home team",
+        )
+
+
 @dataclass(frozen=True)
 class SeasonToDateNetRatingPredictor:
     name: str = "season_to_date_net_rating"
@@ -62,29 +97,91 @@ class SeasonToDateNetRatingPredictor:
             reason = "Season-to-date net ratings are tied"
         elif home_net_rating > away_net_rating:
             predicted_team_id = int(game["HOME_TEAM_ID"])
-            predicted_team_abbreviation = game["HOME_TEAM_ABBREVIATION"]
+            predicted_team_abbreviation = str(game["HOME_TEAM_ABBREVIATION"])
             reason = "Home team has higher season-to-date net rating"
         else:
             predicted_team_id = int(game["AWAY_TEAM_ID"])
-            predicted_team_abbreviation = game["AWAY_TEAM_ABBREVIATION"]
+            predicted_team_abbreviation = str(game["AWAY_TEAM_ABBREVIATION"])
             reason = "Away team has higher season-to-date net rating"
 
-        return GamePrediction(
-            season=str(game["SEASON"]),
-            game_id=str(game["GAME_ID"]),
+        return make_prediction(
+            game=game,
             predictor_name=self.name,
-            home_team_id=int(game["HOME_TEAM_ID"]),
-            home_team_abbreviation=str(game["HOME_TEAM_ABBREVIATION"]),
-            away_team_id=int(game["AWAY_TEAM_ID"]),
-            away_team_abbreviation=str(game["AWAY_TEAM_ABBREVIATION"]),
             predicted_team_id=predicted_team_id,
             predicted_team_abbreviation=predicted_team_abbreviation,
             reason=reason,
         )
 
 
-PREDICTORS = {
+@dataclass(frozen=True)
+class SeasonToDateWinPctPredictor:
+    name: str = "season_to_date_win_pct"
+
+    def predict(self, game: pd.Series) -> GamePrediction:
+        home_win_pct = game["HOME_SEASON_TO_DATE_WIN_PCT"]
+        away_win_pct = game["AWAY_SEASON_TO_DATE_WIN_PCT"]
+
+        predicted_team_id = None
+        predicted_team_abbreviation = None
+        if pd.isna(home_win_pct) or pd.isna(away_win_pct):
+            reason = "Missing season-to-date win percentage"
+        elif home_win_pct == away_win_pct:
+            reason = "Season-to-date win percentages are tied"
+        elif home_win_pct > away_win_pct:
+            predicted_team_id = int(game["HOME_TEAM_ID"])
+            predicted_team_abbreviation = str(game["HOME_TEAM_ABBREVIATION"])
+            reason = "Home team has higher season-to-date win percentage"
+        else:
+            predicted_team_id = int(game["AWAY_TEAM_ID"])
+            predicted_team_abbreviation = str(game["AWAY_TEAM_ABBREVIATION"])
+            reason = "Away team has higher season-to-date win percentage"
+
+        return make_prediction(
+            game=game,
+            predictor_name=self.name,
+            predicted_team_id=predicted_team_id,
+            predicted_team_abbreviation=predicted_team_abbreviation,
+            reason=reason,
+        )
+
+
+@dataclass(frozen=True)
+class Rolling10NetRatingPredictor:
+    name: str = "rolling_10_net_rating"
+
+    def predict(self, game: pd.Series) -> GamePrediction:
+        home_net_rating = game["HOME_ROLLING_10_NET_RATING"]
+        away_net_rating = game["AWAY_ROLLING_10_NET_RATING"]
+
+        predicted_team_id = None
+        predicted_team_abbreviation = None
+        if pd.isna(home_net_rating) or pd.isna(away_net_rating):
+            reason = "Missing rolling 10-game net rating"
+        elif home_net_rating == away_net_rating:
+            reason = "Rolling 10-game net ratings are tied"
+        elif home_net_rating > away_net_rating:
+            predicted_team_id = int(game["HOME_TEAM_ID"])
+            predicted_team_abbreviation = str(game["HOME_TEAM_ABBREVIATION"])
+            reason = "Home team has higher rolling 10-game net rating"
+        else:
+            predicted_team_id = int(game["AWAY_TEAM_ID"])
+            predicted_team_abbreviation = str(game["AWAY_TEAM_ABBREVIATION"])
+            reason = "Away team has higher rolling 10-game net rating"
+
+        return make_prediction(
+            game=game,
+            predictor_name=self.name,
+            predicted_team_id=predicted_team_id,
+            predicted_team_abbreviation=predicted_team_abbreviation,
+            reason=reason,
+        )
+
+
+PREDICTORS: dict[str, type[GamePredictor]] = {
+    HomeTeamPredictor.name: HomeTeamPredictor,
+    Rolling10NetRatingPredictor.name: Rolling10NetRatingPredictor,
     SeasonToDateNetRatingPredictor.name: SeasonToDateNetRatingPredictor,
+    SeasonToDateWinPctPredictor.name: SeasonToDateWinPctPredictor,
 }
 
 
