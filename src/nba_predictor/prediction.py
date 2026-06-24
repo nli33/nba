@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -35,7 +37,10 @@ class GamePrediction:
 
 
 class GamePredictor(Protocol):
-    name: str
+    @property
+    def name(self) -> str:
+        """Predictor display name."""
+        ...
 
     def predict(self, game: pd.Series) -> GamePrediction:
         """Predict one game from a processed model_games row."""
@@ -78,6 +83,11 @@ class SeasonToDateNetRatingPredictor:
         )
 
 
+PREDICTORS = {
+    SeasonToDateNetRatingPredictor.name: SeasonToDateNetRatingPredictor,
+}
+
+
 def load_model_games(season: str) -> pd.DataFrame:
     path = PROCESSED_DATA_DIR / season / "model_games.parquet"
     if not path.exists():
@@ -100,3 +110,69 @@ def predict_game_by_id(
         raise ValueError(f"Expected one processed row for game {game_id}, found {len(matches)}")
 
     return active_predictor.predict(matches.iloc[0])
+
+
+def find_game_season(game_id: str) -> str:
+    matches = []
+    for path in sorted(PROCESSED_DATA_DIR.glob("*/model_games.parquet")):
+        model_games = pd.read_parquet(path, columns=["GAME_ID"])
+        if model_games["GAME_ID"].eq(game_id).any():
+            matches.append(path.parent.name)
+
+    if not matches:
+        raise ValueError(f"Game {game_id} not found in processed data")
+    if len(matches) > 1:
+        seasons = ", ".join(matches)
+        raise ValueError(f"Game {game_id} found in multiple processed seasons: {seasons}")
+
+    return matches[0]
+
+
+def format_prediction(prediction: GamePrediction) -> str:
+    if prediction.predicted_team_abbreviation is None:
+        predicted = "No prediction"
+    else:
+        predicted = (
+            f"{prediction.predicted_team_abbreviation} "
+            f"(team ID {prediction.predicted_team_id})"
+        )
+
+    return "\n".join(
+        [
+            "Game Prediction",
+            f"  Predictor: {prediction.predictor_name}",
+            f"  Season: {prediction.season}",
+            f"  Game ID: {prediction.game_id}",
+            (
+                "  Matchup: "
+                f"{prediction.away_team_abbreviation} at {prediction.home_team_abbreviation}"
+            ),
+            f"  Predicted winner: {predicted}",
+            f"  Reason: {prediction.reason}",
+        ]
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Predict the winner of one processed NBA game.")
+    parser.add_argument(
+        "predictor",
+        choices=sorted(PREDICTORS),
+        help="Predictor to use.",
+    )
+    parser.add_argument("game_id", help="NBA game ID to predict.")
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Run one game prediction from processed data."""
+    args = parse_args()
+    predictor = PREDICTORS[args.predictor]()
+    try:
+        season = find_game_season(args.game_id)
+        prediction = predict_game_by_id(season, args.game_id, predictor)
+    except (FileNotFoundError, ValueError) as error:
+        print(f"Unable to predict game: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    print(format_prediction(prediction))
