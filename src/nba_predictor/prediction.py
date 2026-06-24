@@ -27,6 +27,7 @@ class GamePrediction:
     predicted_team_id: int | None
     predicted_team_abbreviation: str | None
     reason: str
+    home_win_probability: float | None = None
 
     @property
     def is_null(self) -> bool:
@@ -52,6 +53,7 @@ def make_prediction(
     predicted_team_id: int | None,
     predicted_team_abbreviation: str | None,
     reason: str,
+    home_win_probability: float | None = None,
 ) -> GamePrediction:
     return GamePrediction(
         season=str(game["SEASON"]),
@@ -64,6 +66,7 @@ def make_prediction(
         predicted_team_id=predicted_team_id,
         predicted_team_abbreviation=predicted_team_abbreviation,
         reason=reason,
+        home_win_probability=home_win_probability,
     )
 
 
@@ -234,20 +237,21 @@ def format_prediction(prediction: GamePrediction) -> str:
             f"(team ID {prediction.predicted_team_id})"
         )
 
-    return "\n".join(
-        [
-            "Game Prediction",
-            f"  Predictor: {prediction.predictor_name}",
-            f"  Season: {prediction.season}",
-            f"  Game ID: {prediction.game_id}",
-            (
-                "  Matchup: "
-                f"{prediction.away_team_abbreviation} at {prediction.home_team_abbreviation}"
-            ),
-            f"  Predicted winner: {predicted}",
-            f"  Reason: {prediction.reason}",
-        ]
-    )
+    lines = [
+        "Game Prediction",
+        f"  Predictor: {prediction.predictor_name}",
+        f"  Season: {prediction.season}",
+        f"  Game ID: {prediction.game_id}",
+        (
+            "  Matchup: "
+            f"{prediction.away_team_abbreviation} at {prediction.home_team_abbreviation}"
+        ),
+        f"  Predicted winner: {predicted}",
+    ]
+    if prediction.home_win_probability is not None:
+        lines.append(f"  P(home wins): {100 * prediction.home_win_probability:.2f}%")
+    lines.append(f"  Reason: {prediction.reason}")
+    return "\n".join(lines)
 
 
 def parse_args() -> argparse.Namespace:

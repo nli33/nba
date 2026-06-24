@@ -1,5 +1,6 @@
 /data/*
 !/data/.gitkeep
+/models/*
 
 # Python-generated files
 __pycache__/

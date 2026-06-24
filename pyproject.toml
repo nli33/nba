@@ -20,6 +20,10 @@ nba-process = "nba_predictor.data.process:main"
 nba-predict = "nba_predictor.prediction:main"
 nba-evaluate = "nba_predictor.evaluation:main"
 nba-evaluate-baselines = "nba_predictor.evaluation:baselines_main"
+nba-train-logistic = "nba_predictor.logistic_regression:train_main"
+nba-inspect-logistic = "nba_predictor.logistic_regression:inspect_main"
+nba-evaluate-logistic = "nba_predictor.logistic_regression:evaluate_main"
+nba-predict-logistic = "nba_predictor.logistic_regression:predict_main"
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -34,4 +38,5 @@ dev = [
     "pandas-stubs>=3.0.3.260530",
     "pytest>=9.1.0",
     "ruff>=0.15.17",
+    "scikit-learn-stubs>=0.0.3",
 ]
