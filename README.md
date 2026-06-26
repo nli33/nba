@@ -51,10 +51,22 @@ Evaluate one baseline predictor over a full season:
 uv run nba-evaluate season_to_date_net_rating 2025-26
 ```
 
+Print game-by-game results for one baseline predictor:
+
+```bash
+uv run nba-evaluate season_to_date_net_rating 2025-26 --details
+```
+
 Evaluate all baseline predictors over a full season:
 
 ```bash
 uv run nba-evaluate-baselines 2025-26
+```
+
+Print game-by-game results for all baseline predictors:
+
+```bash
+uv run nba-evaluate-baselines 2025-26 --details
 ```
 
 ## Logistic Regression
@@ -98,6 +110,12 @@ Evaluate the saved model on a different season:
 
 ```bash
 uv run nba-evaluate-logistic models/logistic_regression_2024-25.pkl 2025-26
+```
+
+Print game-by-game results for the saved model:
+
+```bash
+uv run nba-evaluate-logistic models/logistic_regression_2024-25.pkl 2025-26 --details
 ```
 
 Predict one game with the saved model:

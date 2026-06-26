@@ -15,7 +15,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from nba_predictor.evaluation import evaluate_season, format_evaluation
+from nba_predictor.evaluation import (
+    evaluate_season,
+    format_evaluation,
+    format_game_predictions,
+)
 from nba_predictor.prediction import (
     GamePrediction,
     find_game_season,
@@ -395,6 +399,11 @@ def parse_evaluate_args() -> argparse.Namespace:
     )
     parser.add_argument("model", type=Path, help="Path to a trained model artifact.")
     parser.add_argument("season", help='Evaluation season, for example "2025-26".')
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Print game-by-game prediction results instead of summary metrics.",
+    )
     return parser.parse_args()
 
 
@@ -403,12 +412,16 @@ def evaluate_main() -> None:
     args = parse_evaluate_args()
     try:
         artifact = load_model(args.model)
-        evaluation = evaluate_season(args.season, LogisticRegressionPredictor(artifact))
+        predictor = LogisticRegressionPredictor(artifact)
+        if args.details:
+            report = format_game_predictions(args.season, [predictor])
+        else:
+            report = format_evaluation(evaluate_season(args.season, predictor))
     except (FileNotFoundError, ValueError) as error:
         print(f"Unable to evaluate logistic regression: {error}", file=sys.stderr)
         raise SystemExit(1) from None
 
-    print(format_evaluation(evaluation))
+    print(report)
 
 
 def parse_predict_args() -> argparse.Namespace:
