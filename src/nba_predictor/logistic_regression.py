@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -52,6 +53,70 @@ class LogisticRegressionModel:
     @property
     def games_dropped(self) -> int:
         return self.games_available - self.games_trained
+
+
+@dataclass(frozen=True)
+class LogisticEvaluation:
+    train_seasons: list[str]
+    eval_season: str
+    feature_columns: list[str]
+    games_evaluated: int
+    predictions_made: int
+    correct_predictions: int
+    log_loss: float
+    brier_score: float
+
+    @property
+    def accuracy(self) -> float:
+        return self.correct_predictions / self.games_evaluated
+
+    @property
+    def accuracy_when_predicted(self) -> float:
+        if self.predictions_made == 0:
+            return 0.0
+        return self.correct_predictions / self.predictions_made
+
+
+@dataclass(frozen=True)
+class AblationResult:
+    removed_feature: str | None
+    evaluations: list[LogisticEvaluation]
+
+    @property
+    def label(self) -> str:
+        if self.removed_feature is None:
+            return "(baseline)"
+        return self.removed_feature
+
+    @property
+    def avg_accuracy(self) -> float:
+        return sum(evaluation.accuracy for evaluation in self.evaluations) / len(
+            self.evaluations
+        )
+
+    @property
+    def avg_accuracy_when_predicted(self) -> float:
+        return sum(
+            evaluation.accuracy_when_predicted for evaluation in self.evaluations
+        ) / len(self.evaluations)
+
+    @property
+    def avg_correct_predictions(self) -> float:
+        return sum(evaluation.correct_predictions for evaluation in self.evaluations) / len(
+            self.evaluations
+        )
+
+    @property
+    def avg_log_loss(self) -> float:
+        return sum(evaluation.log_loss for evaluation in self.evaluations) / len(
+            self.evaluations
+        )
+
+    @property
+    def avg_brier_score(self) -> float:
+        return sum(evaluation.brier_score for evaluation in self.evaluations) / len(
+            self.evaluations
+        )
 
 
 @dataclass(frozen=True)
@@ -129,6 +194,17 @@ def validate_feature_columns(model_games: pd.DataFrame, feature_columns: list[st
         raise ValueError(f"Feature columns not found in processed data: {columns}")
 
 
+def fit_logistic_pipeline(train_data: pd.DataFrame, feature_columns: list[str]) -> Any:
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("model", LogisticRegression(max_iter=1000)),
+        ]
+    )
+    pipeline.fit(train_data[feature_columns], train_data["HOME_WIN"].astype(int))
+    return pipeline
+
+
 def train_logistic_regression(
     season: str,
     feature_columns: list[str] | None = None,
@@ -143,13 +219,7 @@ def train_logistic_regression(
     if train_data.empty:
         raise ValueError(f"No complete training rows found for season {season}")
 
-    pipeline = Pipeline(
-        [
-            ("scaler", StandardScaler()),
-            ("model", LogisticRegression(max_iter=1000)),
-        ]
-    )
-    pipeline.fit(train_data[active_feature_columns], train_data["HOME_WIN"].astype(int))
+    pipeline = fit_logistic_pipeline(train_data, active_feature_columns)
 
     return LogisticRegressionModel(
         train_season=season,
@@ -157,6 +227,63 @@ def train_logistic_regression(
         pipeline=pipeline,
         games_available=len(model_games),
         games_trained=len(train_data),
+    )
+
+
+def train_logistic_regression_for_seasons(
+    seasons: list[str],
+    feature_columns: list[str],
+) -> LogisticRegressionModel:
+    if not seasons:
+        raise ValueError("At least one training season is required")
+
+    frames = []
+    games_available = 0
+    for season in seasons:
+        model_games = load_model_games(season)
+        validate_feature_columns(model_games, feature_columns)
+        games_available += len(model_games)
+        frames.append(model_games)
+
+    combined = pd.concat(frames, ignore_index=True)
+    train_data = combined.dropna(subset=feature_columns + ["HOME_WIN"])
+    if train_data.empty:
+        season_list = ", ".join(seasons)
+        raise ValueError(f"No complete training rows found for seasons: {season_list}")
+
+    return LogisticRegressionModel(
+        train_season=", ".join(seasons),
+        feature_columns=list(feature_columns),
+        pipeline=fit_logistic_pipeline(train_data, feature_columns),
+        games_available=games_available,
+        games_trained=len(train_data),
+    )
+
+
+def evaluate_logistic_regression(
+    artifact: LogisticRegressionModel,
+    eval_season: str,
+    train_seasons: list[str],
+) -> LogisticEvaluation:
+    model_games = load_model_games(eval_season)
+    validate_feature_columns(model_games, artifact.feature_columns)
+    eval_data = model_games.dropna(subset=artifact.feature_columns + ["HOME_WIN"])
+    if eval_data.empty:
+        raise ValueError(f"No complete evaluation rows found for season {eval_season}")
+
+    y_true = eval_data["HOME_WIN"].astype(int)
+    probabilities = artifact.pipeline.predict_proba(eval_data[artifact.feature_columns])[:, 1]
+    predictions = probabilities >= 0.5
+
+    return LogisticEvaluation(
+        train_seasons=train_seasons,
+        eval_season=eval_season,
+        feature_columns=artifact.feature_columns,
+        games_evaluated=len(model_games),
+        predictions_made=len(eval_data),
+        correct_predictions=int((predictions == y_true).sum()),
+        log_loss=float(log_loss(y_true, probabilities)),
+        brier_score=float(brier_score_loss(y_true, probabilities)),
     )
 
 
@@ -309,3 +436,158 @@ def predict_main() -> None:
         raise SystemExit(1) from None
 
     print(format_prediction(prediction))
+
+
+def rolling_splits(seasons: list[str], min_train_seasons: int) -> list[tuple[list[str], str]]:
+    if min_train_seasons < 1:
+        raise ValueError("--min-train-seasons must be at least 1")
+    if len(seasons) <= min_train_seasons:
+        raise ValueError("Need more seasons than --min-train-seasons to ablate")
+
+    return [
+        (seasons[:index], seasons[index])
+        for index in range(min_train_seasons, len(seasons))
+    ]
+
+
+def run_ablation(
+    seasons: list[str],
+    feature_columns: list[str],
+    min_train_seasons: int,
+) -> tuple[AblationResult, list[AblationResult]]:
+    if len(feature_columns) < 2:
+        raise ValueError("At least two feature columns are required for ablation")
+
+    splits = rolling_splits(seasons, min_train_seasons)
+    candidates: list[tuple[str | None, list[str]]] = [(None, feature_columns)]
+    candidates.extend(
+        (feature, [column for column in feature_columns if column != feature])
+        for feature in feature_columns
+    )
+
+    results = []
+    total_runs = len(candidates) * len(splits)
+    run_number = 0
+    for removed_feature, active_features in candidates:
+        evaluations = []
+        label = "(baseline)" if removed_feature is None else f"remove {removed_feature}"
+        for train_seasons, eval_season in splits:
+            run_number += 1
+            print(
+                f"[{run_number}/{total_runs}] {label}; "
+                f"train {', '.join(train_seasons)} -> eval {eval_season}",
+                file=sys.stderr,
+                flush=True,
+            )
+            artifact = train_logistic_regression_for_seasons(
+                train_seasons,
+                active_features,
+            )
+            evaluations.append(
+                evaluate_logistic_regression(artifact, eval_season, train_seasons)
+            )
+        results.append(AblationResult(removed_feature, evaluations))
+
+    baseline = results[0]
+    return baseline, results[1:]
+
+
+def format_ablation_report(
+    seasons: list[str],
+    feature_columns: list[str],
+    baseline: AblationResult,
+    ablations: list[AblationResult],
+) -> str:
+    sorted_ablations = sorted(
+        ablations,
+        key=lambda result: result.avg_correct_predictions
+        - baseline.avg_correct_predictions,
+    )
+    lines = [
+        "Logistic Regression Feature Ablation",
+        f"  Seasons: {', '.join(seasons)}",
+        f"  Active features: {len(feature_columns)}",
+        f"  Rolling splits: {len(baseline.evaluations)}",
+        "",
+        "Baseline",
+        (
+            f"  Accuracy: {100 * baseline.avg_accuracy:.2f}% | "
+            f"When predicted: {100 * baseline.avg_accuracy_when_predicted:.2f}% | "
+            f"Avg correct: {baseline.avg_correct_predictions:.1f} | "
+            f"Log loss: {baseline.avg_log_loss:.4f} | "
+            f"Brier: {baseline.avg_brier_score:.4f}"
+        ),
+        "",
+        (
+            f"{'Removed feature':<40} {'Acc':>8} {'Correct':>9} {'Delta':>8} "
+            f"{'LogLoss':>8} {'Brier':>8}"
+        ),
+        "-" * 91,
+    ]
+    for result in sorted_ablations:
+        correct_delta = result.avg_correct_predictions - baseline.avg_correct_predictions
+        lines.append(
+            f"{result.label:<40} "
+            f"{100 * result.avg_accuracy:>7.2f}% "
+            f"{result.avg_correct_predictions:>9.1f} "
+            f"{correct_delta:>+8.1f} "
+            f"{result.avg_log_loss:>8.4f} "
+            f"{result.avg_brier_score:>8.4f}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Interpretation",
+            "  Negative delta means removing the feature reduced average correct picks.",
+            "  Positive delta means removing the feature improved average correct picks.",
+            "  Small deltas can be noise; compare with log loss and Brier score.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def parse_ablate_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run drop-one-feature ablation for logistic regression."
+    )
+    parser.add_argument(
+        "--seasons",
+        nargs="+",
+        required=True,
+        help="Chronological seasons to use for rolling train/eval splits.",
+    )
+    parser.add_argument(
+        "--min-train-seasons",
+        type=int,
+        default=1,
+        help="Number of initial seasons before the first evaluation split.",
+    )
+    parser.add_argument(
+        "--features",
+        nargs="+",
+        help="Feature column names to use instead of the default feature set.",
+    )
+    parser.add_argument(
+        "--features-file",
+        type=Path,
+        help="Text file with one feature column per line. Blank lines and # comments are ignored.",
+    )
+    return parser.parse_args()
+
+
+def ablate_main() -> None:
+    """Run logistic regression feature ablation."""
+    args = parse_ablate_args()
+    try:
+        feature_columns = resolve_feature_columns(args)
+        baseline, ablations = run_ablation(
+            args.seasons,
+            feature_columns,
+            args.min_train_seasons,
+        )
+    except (FileNotFoundError, ValueError) as error:
+        print(f"Unable to run logistic regression ablation: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    print(format_ablation_report(args.seasons, feature_columns, baseline, ablations))

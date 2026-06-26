@@ -108,3 +108,17 @@ uv run nba-predict-logistic models/logistic_regression_2024-25.pkl 0022500018
 
 Single-game logistic predictions include `P(home wins)` when all required pre-game
 features are available.
+
+Run drop-one-feature ablation across rolling historical splits:
+
+```bash
+uv run nba-ablate-logistic \
+  --seasons 2021-22 2022-23 2023-24 2024-25 2025-26 \
+  --features-file configs/features.txt
+```
+
+Create `configs/features.txt` locally with one feature column per line. Blank lines
+and lines starting with `#` are ignored.
+
+The command prints progress while fitting models, then outputs one final report with
+average accuracy, correct-pick deltas, log loss, and Brier score.
