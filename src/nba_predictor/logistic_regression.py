@@ -25,7 +25,7 @@ from nba_predictor.prediction import (
 )
 
 
-FEATURE_COLUMNS = [
+DEFAULT_FEATURE_COLUMNS = [
     "DIFF_SEASON_TO_DATE_WIN_PCT",
     "DIFF_SEASON_TO_DATE_POINT_DIFF",
     "DIFF_SEASON_TO_DATE_NET_RATING",
@@ -89,9 +89,57 @@ class LogisticRegressionPredictor:
         )
 
 
-def train_logistic_regression(season: str) -> LogisticRegressionModel:
+def read_feature_file(path: Path) -> list[str]:
+    feature_columns = []
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#"):
+            feature_columns.append(line)
+    return feature_columns
+
+
+def resolve_feature_columns(args: argparse.Namespace) -> list[str]:
+    if args.features and args.features_file:
+        raise ValueError("Use either --features or --features-file, not both")
+    if args.features:
+        return args.features
+    if args.features_file:
+        return read_feature_file(args.features_file)
+    return DEFAULT_FEATURE_COLUMNS
+
+
+def validate_feature_columns(model_games: pd.DataFrame, feature_columns: list[str]) -> None:
+    if not feature_columns:
+        raise ValueError("At least one feature column is required")
+
+    seen_columns = set()
+    duplicate_columns = set()
+    for column in feature_columns:
+        if column in seen_columns:
+            duplicate_columns.add(column)
+        else:
+            seen_columns.add(column)
+    if duplicate_columns:
+        columns = ", ".join(sorted(duplicate_columns))
+        raise ValueError(f"Duplicate feature columns: {columns}")
+
+    missing_columns = sorted(set(feature_columns) - set(model_games.columns))
+    if missing_columns:
+        columns = ", ".join(missing_columns)
+        raise ValueError(f"Feature columns not found in processed data: {columns}")
+
+
+def train_logistic_regression(
+    season: str,
+    feature_columns: list[str] | None = None,
+) -> LogisticRegressionModel:
     model_games = load_model_games(season)
-    train_data = model_games.dropna(subset=FEATURE_COLUMNS + ["HOME_WIN"])
+    active_feature_columns = (
+        DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
+    )
+    validate_feature_columns(model_games, active_feature_columns)
+
+    train_data = model_games.dropna(subset=active_feature_columns + ["HOME_WIN"])
     if train_data.empty:
         raise ValueError(f"No complete training rows found for season {season}")
 
@@ -101,11 +149,11 @@ def train_logistic_regression(season: str) -> LogisticRegressionModel:
             ("model", LogisticRegression(max_iter=1000)),
         ]
     )
-    pipeline.fit(train_data[FEATURE_COLUMNS], train_data["HOME_WIN"].astype(int))
+    pipeline.fit(train_data[active_feature_columns], train_data["HOME_WIN"].astype(int))
 
     return LogisticRegressionModel(
         train_season=season,
-        feature_columns=FEATURE_COLUMNS,
+        feature_columns=list(active_feature_columns),
         pipeline=pipeline,
         games_available=len(model_games),
         games_trained=len(train_data),
@@ -167,6 +215,16 @@ def parse_train_args() -> argparse.Namespace:
         default=Path("models/logistic_regression.pkl"),
         help="Path to write the trained model artifact.",
     )
+    parser.add_argument(
+        "--features",
+        nargs="+",
+        help="Feature column names to use instead of the default feature set.",
+    )
+    parser.add_argument(
+        "--features-file",
+        type=Path,
+        help="Text file with one feature column per line. Blank lines and # comments are ignored.",
+    )
     return parser.parse_args()
 
 
@@ -174,7 +232,8 @@ def train_main() -> None:
     """Train and save a logistic regression predictor."""
     args = parse_train_args()
     try:
-        artifact = train_logistic_regression(args.season)
+        feature_columns = resolve_feature_columns(args)
+        artifact = train_logistic_regression(args.season, feature_columns)
         save_model(artifact, args.output)
     except (FileNotFoundError, ValueError) as error:
         print(f"Unable to train logistic regression: {error}", file=sys.stderr)

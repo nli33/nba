@@ -68,6 +68,26 @@ uv run nba-train-logistic 2024-25 --output models/logistic_regression_2024-25.pk
 The training command prints the number of rows used/dropped, the intercept, and learned
 coefficients sorted by absolute magnitude.
 
+By default, training uses the built-in preliminary feature set. To train with explicit
+feature columns instead:
+
+```bash
+uv run nba-train-logistic 2024-25 \
+  --features DIFF_SEASON_TO_DATE_NET_RATING DIFF_ROLLING_10_NET_RATING \
+  --output models/logistic_regression_custom.pkl
+```
+
+For longer or repeatable feature sets, use a text file with one column per line:
+
+```bash
+uv run nba-train-logistic 2024-25 \
+  --features-file configs/features.txt \
+  --output models/logistic_regression_custom.pkl
+```
+
+Saved model artifacts store the feature columns used at training time, so evaluation and
+single-game prediction do not need feature arguments.
+
 Inspect a saved model later:
 
 ```bash
