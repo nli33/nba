@@ -22,9 +22,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 100,
                 "WL": "W",
                 "PLUS_MINUS": 10,
+                "FGM": 40,
                 "FGA": 80,
+                "FG3M": 10,
+                "FG3A": 30,
                 "FTA": 20,
                 "OREB": 10,
+                "DREB": 30,
+                "AST": 25,
                 "TOV": 12,
             },
             {
@@ -38,9 +43,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 90,
                 "WL": "L",
                 "PLUS_MINUS": -10,
+                "FGM": 35,
                 "FGA": 82,
+                "FG3M": 8,
+                "FG3A": 25,
                 "FTA": 15,
                 "OREB": 8,
+                "DREB": 28,
+                "AST": 20,
                 "TOV": 14,
             },
             {
@@ -54,9 +64,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 95,
                 "WL": "L",
                 "PLUS_MINUS": -10,
+                "FGM": 37,
                 "FGA": 78,
+                "FG3M": 9,
+                "FG3A": 24,
                 "FTA": 18,
                 "OREB": 9,
+                "DREB": 29,
+                "AST": 22,
                 "TOV": 11,
             },
             {
@@ -70,9 +85,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 105,
                 "WL": "W",
                 "PLUS_MINUS": 10,
+                "FGM": 42,
                 "FGA": 83,
+                "FG3M": 11,
+                "FG3A": 31,
                 "FTA": 22,
                 "OREB": 11,
+                "DREB": 31,
+                "AST": 27,
                 "TOV": 10,
             },
             {
@@ -86,9 +106,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 110,
                 "WL": "W",
                 "PLUS_MINUS": 10,
+                "FGM": 43,
                 "FGA": 85,
+                "FG3M": 12,
+                "FG3A": 32,
                 "FTA": 19,
                 "OREB": 12,
+                "DREB": 32,
+                "AST": 26,
                 "TOV": 9,
             },
             {
@@ -102,9 +127,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "PTS": 100,
                 "WL": "L",
                 "PLUS_MINUS": -10,
+                "FGM": 39,
                 "FGA": 81,
+                "FG3M": 9,
+                "FG3A": 27,
                 "FTA": 21,
                 "OREB": 7,
+                "DREB": 27,
+                "AST": 24,
                 "TOV": 13,
             },
         ]
@@ -135,6 +165,7 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert math.isnan(aaa_game_1["SEASON_TO_DATE_WIN_PCT"])
     assert aaa_game_1["ELO_FLAT_PRE_GAME"] == process.START_ELO
     assert aaa_game_1["ELO_CARRYOVER_PRE_GAME"] == process.START_ELO
+    assert aaa_game_1["CONSECUTIVE_ROAD_GAMES"] == 0
 
     expected_aaa_elo_after_g1, _ = process.updated_elos(
         process.START_ELO,
@@ -144,14 +175,30 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert aaa_game_2["DAYS_REST"] == 1
     assert aaa_game_2["IS_BACK_TO_BACK"] == 1
     assert aaa_game_2["IS_3_IN_4"] == 0
+    assert aaa_game_2["CONSECUTIVE_ROAD_GAMES"] == 1
     assert aaa_game_2["SEASON_TO_DATE_WIN_PCT"] == 1.0
     assert aaa_game_2["SEASON_TO_DATE_POINT_DIFF"] == 10.0
     assert aaa_game_2["ROLLING_5_POINT_DIFF"] == 10.0
     assert aaa_game_2["ELO_FLAT_PRE_GAME"] == pytest.approx(expected_aaa_elo_after_g1)
+    assert aaa_game_2["SEASON_TO_DATE_OFF_EFG_PCT"] == pytest.approx(45 / 80)
+    assert aaa_game_2["SEASON_TO_DATE_DEF_EFG_PCT"] == pytest.approx(39 / 82)
+    assert aaa_game_2["SEASON_TO_DATE_OFF_TOV_RATE"] == pytest.approx(12 / 90.8)
+    assert aaa_game_2["SEASON_TO_DATE_DEF_TOV_RATE"] == pytest.approx(14 / 94.6)
+    assert aaa_game_2["SEASON_TO_DATE_OFF_OREB_RATE"] == pytest.approx(10 / 38)
+    assert aaa_game_2["SEASON_TO_DATE_DEF_OREB_RATE"] == pytest.approx(8 / 38)
+    assert aaa_game_2["SEASON_TO_DATE_OFF_FT_RATE"] == pytest.approx(20 / 80)
+    assert aaa_game_2["SEASON_TO_DATE_DEF_FT_RATE"] == pytest.approx(15 / 82)
+    assert aaa_game_2["SEASON_TO_DATE_PACE"] == pytest.approx((90.8 + 94.6) / 2)
+    assert aaa_game_2["SEASON_TO_DATE_FG3A_RATE"] == pytest.approx(30 / 80)
+    assert aaa_game_2["SEASON_TO_DATE_OPP_FG3A_RATE"] == pytest.approx(25 / 82)
+    assert aaa_game_2["SEASON_TO_DATE_AST_RATE"] == pytest.approx(25 / 40)
+    assert aaa_game_2["SEASON_TO_DATE_OPP_AST_RATE"] == pytest.approx(20 / 35)
+    assert aaa_game_2["ROLLING_5_OFF_EFG_PCT"] == pytest.approx(45 / 80)
 
     assert aaa_game_3["DAYS_REST"] == 3
     assert aaa_game_3["IS_BACK_TO_BACK"] == 0
     assert aaa_game_3["IS_3_IN_4"] == 0
+    assert aaa_game_3["CONSECUTIVE_ROAD_GAMES"] == 2
     assert aaa_game_3["SEASON_TO_DATE_WIN_PCT"] == 1.0
     assert aaa_game_3["SEASON_TO_DATE_POINT_DIFF"] == 10.0
     assert aaa_game_3["ROLLING_5_WIN_PCT"] == 1.0
@@ -176,3 +223,7 @@ def test_build_model_games_adds_home_minus_away_diffs() -> None:
     assert game_3["AWAY_SEASON_TO_DATE_WIN_PCT"] == 1.0
     assert game_3["DIFF_SEASON_TO_DATE_WIN_PCT"] == -1.0
     assert game_3["DIFF_SEASON_TO_DATE_POINT_DIFF"] == -20.0
+    assert game_3["AWAY_CONSECUTIVE_ROAD_GAMES"] == 2
+    assert game_3["DIFF_CONSECUTIVE_ROAD_GAMES"] == -2
+    assert "DIFF_SEASON_TO_DATE_OFF_EFG_PCT" in model_games.columns
+    assert "DIFF_ROLLING_10_PACE" in model_games.columns

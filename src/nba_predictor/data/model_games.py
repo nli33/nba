@@ -20,44 +20,62 @@ def build_model_games(games: pd.DataFrame, team_features: pd.DataFrame) -> pd.Da
     ]
 
     home_features = team_features.loc[team_features["IS_HOME"], feature_columns].rename(
-        columns={column: f"HOME_{column}" for column in feature_columns if column != "GAME_ID"}
+        columns={
+            column: f"HOME_{column}"
+            for column in feature_columns
+            if column != "GAME_ID"
+        }
     )
-    away_features = team_features.loc[~team_features["IS_HOME"], feature_columns].rename(
-        columns={column: f"AWAY_{column}" for column in feature_columns if column != "GAME_ID"}
+    away_features = team_features.loc[
+        ~team_features["IS_HOME"], feature_columns
+    ].rename(
+        columns={
+            column: f"AWAY_{column}"
+            for column in feature_columns
+            if column != "GAME_ID"
+        }
     )
 
-    model_games = games[
-        [
-            "GAME_ID",
-            "GAME_DATE",
-            "SEASON",
-            "SEASON_TYPE",
-            "HOME_TEAM_ID",
-            "HOME_TEAM_ABBREVIATION",
-            "AWAY_TEAM_ID",
-            "AWAY_TEAM_ABBREVIATION",
-            "HOME_WIN",
+    model_games = (
+        games[
+            [
+                "GAME_ID",
+                "GAME_DATE",
+                "SEASON",
+                "SEASON_TYPE",
+                "HOME_TEAM_ID",
+                "HOME_TEAM_ABBREVIATION",
+                "AWAY_TEAM_ID",
+                "AWAY_TEAM_ABBREVIATION",
+                "HOME_WIN",
+            ]
         ]
-    ].merge(
-        home_features,
-        left_on=["GAME_ID", "HOME_TEAM_ID"],
-        right_on=["GAME_ID", "HOME_TEAM_ID"],
-        validate="one_to_one",
-    ).merge(
-        away_features,
-        left_on=["GAME_ID", "AWAY_TEAM_ID"],
-        right_on=["GAME_ID", "AWAY_TEAM_ID"],
-        validate="one_to_one",
+        .merge(
+            home_features,
+            left_on=["GAME_ID", "HOME_TEAM_ID"],
+            right_on=["GAME_ID", "HOME_TEAM_ID"],
+            validate="one_to_one",
+        )
+        .merge(
+            away_features,
+            left_on=["GAME_ID", "AWAY_TEAM_ID"],
+            right_on=["GAME_ID", "AWAY_TEAM_ID"],
+            validate="one_to_one",
+        )
     )
 
+    diff_columns = {}
     for column in home_features.columns:
         if not column.startswith("HOME_") or column == "HOME_TEAM_ID":
             continue
 
         away_column = column.replace("HOME_", "AWAY_", 1)
         if away_column in model_games.columns:
-            model_games[column.replace("HOME_", "DIFF_", 1)] = (
+            diff_columns[column.replace("HOME_", "DIFF_", 1)] = (
                 model_games[column] - model_games[away_column]
             )
+
+    if diff_columns:
+        model_games = pd.concat([model_games, pd.DataFrame(diff_columns)], axis=1)
 
     return model_games.sort_values(["GAME_DATE", "GAME_ID"], ignore_index=True)
