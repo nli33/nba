@@ -23,6 +23,7 @@ from nba_predictor.data.elo import (
 )
 from nba_predictor.data.games import add_matchup_sides, build_games
 from nba_predictor.data.model_games import build_model_games
+from nba_predictor.data.player_features import build_player_team_features
 from nba_predictor.data.team_features import (
     ROLLING_WINDOWS,
     add_estimated_possessions,
@@ -54,12 +55,14 @@ __all__ = [
     "build_elo_features",
     "build_games",
     "build_model_games",
+    "build_player_team_features",
     "build_team_game_features",
     "carryover_elos",
     "defensive_rating",
     "expected_home_win_probability",
     "final_flat_elos",
     "load_previous_games",
+    "load_player_game_logs",
     "load_team_game_logs",
     "main",
     "net_rating",
@@ -90,6 +93,28 @@ def load_team_game_logs(season: str) -> pd.DataFrame:
         raise FileNotFoundError(
             f"No team game logs found under {RAW_DATA_DIR / season / 'team_game_logs'}"
         )
+
+    data = pd.concat(frames, ignore_index=True)
+    data["GAME_DATE"] = pd.to_datetime(data["GAME_DATE"])
+    return data
+
+
+def load_player_game_logs(season: str) -> pd.DataFrame | None:
+    frames = []
+
+    for season_type in SEASON_TYPES:
+        path = RAW_DATA_DIR / season / "player_game_logs" / f"{season_type}.parquet"
+        if not path.exists():
+            print(f"Missing raw input, skipping {path}", file=sys.stderr)
+            continue
+
+        data = pd.read_parquet(path)
+        data["SEASON"] = season
+        data["SEASON_TYPE"] = season_type
+        frames.append(data)
+
+    if not frames:
+        return None
 
     data = pd.concat(frames, ignore_index=True)
     data["GAME_DATE"] = pd.to_datetime(data["GAME_DATE"])
@@ -133,6 +158,7 @@ def load_previous_games(season: str) -> pd.DataFrame | None:
 
 def process_season(season: str, overwrite: bool) -> None:
     team_game_logs = load_team_game_logs(season)
+    player_game_logs = load_player_game_logs(season)
     previous_games = load_previous_games(season)
     season_dir = PROCESSED_DATA_DIR / season
 
@@ -143,7 +169,12 @@ def process_season(season: str, overwrite: bool) -> None:
     )
     team_features = write_or_load(
         season_dir / "team_game_features.parquet",
-        lambda: build_team_game_features(team_game_logs, games, previous_games),
+        lambda: build_team_game_features(
+            team_game_logs,
+            games,
+            previous_games,
+            player_game_logs,
+        ),
         overwrite,
     )
     write_or_load(

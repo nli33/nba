@@ -8,10 +8,11 @@ from functools import partial
 from pathlib import Path
 
 import pandas as pd
-from nba_api.stats.endpoints import (
+from nba_api.stats.endpoints import (  # type: ignore[import-untyped]
     leaguegamefinder,
     leaguedashplayerstats,
     leaguedashteamstats,
+    playergamelogs,
 )
 
 
@@ -50,6 +51,13 @@ def fetch_player_stats(season: str, season_type: str, measure: str) -> pd.DataFr
     ).get_data_frames()[0]
 
 
+def fetch_player_game_logs(season: str, season_type: str) -> pd.DataFrame:
+    return playergamelogs.PlayerGameLogs(
+        season_nullable=season,
+        season_type_nullable=season_type,
+    ).get_data_frames()[0]
+
+
 def write_if_needed(
     path: Path,
     fetch: Callable[[], pd.DataFrame],
@@ -76,6 +84,11 @@ def ingest_season(season: str, overwrite: bool) -> None:
         write_if_needed(
             season_dir / "team_game_logs" / f"{file_season_type}.parquet",
             partial(fetch_team_game_logs, season, api_season_type),
+            overwrite,
+        )
+        write_if_needed(
+            season_dir / "player_game_logs" / f"{file_season_type}.parquet",
+            partial(fetch_player_game_logs, season, api_season_type),
             overwrite,
         )
 

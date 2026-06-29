@@ -6,6 +6,7 @@ import pandas as pd
 
 from nba_predictor.data.elo import build_elo_features
 from nba_predictor.data.games import add_matchup_sides
+from nba_predictor.data.player_features import build_player_team_features
 
 
 ROLLING_WINDOWS = (5, 10)
@@ -133,6 +134,7 @@ def build_team_game_features(
     team_game_logs: pd.DataFrame,
     games: pd.DataFrame,
     previous_games: pd.DataFrame | None,
+    player_game_logs: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     data = add_opponent_box_score_stats(
         add_estimated_possessions(add_matchup_sides(team_game_logs))
@@ -145,6 +147,19 @@ def build_team_game_features(
         on=["GAME_ID", "TEAM_ID"],
         validate="one_to_one",
     )
+    player_feature_columns: list[str] = []
+    if player_game_logs is not None:
+        player_features = build_player_team_features(player_game_logs, games)
+        player_feature_columns = [
+            column
+            for column in player_features.columns
+            if column not in {"GAME_ID", "TEAM_ID"}
+        ]
+        data = data.merge(
+            player_features,
+            on=["GAME_ID", "TEAM_ID"],
+            validate="one_to_one",
+        )
     data = data.sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"], ignore_index=True)
 
     by_team = data.groupby("TEAM_ID", group_keys=False)
@@ -280,6 +295,7 @@ def build_team_game_features(
             "SEASON_TO_DATE_OPP_AST_RATE",
         ]
     )
+    columns.extend(player_feature_columns)
 
     return data[columns].sort_values(
         ["GAME_DATE", "GAME_ID", "TEAM_ID"], ignore_index=True

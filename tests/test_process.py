@@ -141,6 +141,58 @@ def sample_team_game_logs() -> pd.DataFrame:
     ).assign(GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"]))
 
 
+def sample_player_game_logs() -> pd.DataFrame:
+    rows = []
+    player_id = 1
+    team_players = {
+        "G1": [
+            (1, "AAA", 36, 40, 10, 20, 5, 10),
+            (1, "AAA", 34, 35, 8, 18, 4, 8),
+            (1, "AAA", 30, 20, 5, 12, 3, 5),
+            (1, "AAA", 20, 10, -3, 7, 2, 1),
+            (2, "BBB", 35, 30, -8, 15, 3, 6),
+            (2, "BBB", 33, 25, -6, 13, 2, 4),
+            (2, "BBB", 28, 20, -4, 11, 1, 2),
+            (2, "BBB", 24, 12, 1, 8, 2, 1),
+        ],
+        "G2": [
+            (3, "CCC", 34, 32, -8, 16, 3, 7),
+            (3, "CCC", 32, 26, -4, 14, 2, 5),
+            (1, "AAA", 37, 45, 12, 21, 6, 9),
+            (1, "AAA", 35, 36, 9, 17, 4, 7),
+        ],
+        "G3": [
+            (2, "BBB", 38, 42, 11, 22, 5, 8),
+            (2, "BBB", 34, 31, 6, 14, 3, 5),
+            (1, "AAA", 36, 34, -5, 18, 4, 6),
+            (1, "AAA", 30, 24, -8, 12, 3, 4),
+        ],
+    }
+    game_dates = {"G1": "2025-10-01", "G2": "2025-10-02", "G3": "2025-10-05"}
+
+    for game_id, players in team_players.items():
+        for team_id, abbreviation, minutes, fantasy, plus_minus, fga, fta, tov in players:
+            rows.append(
+                {
+                    "GAME_ID": game_id,
+                    "GAME_DATE": game_dates[game_id],
+                    "PLAYER_ID": player_id,
+                    "PLAYER_NAME": f"Player {player_id}",
+                    "TEAM_ID": team_id,
+                    "TEAM_ABBREVIATION": abbreviation,
+                    "MIN": minutes,
+                    "FGA": fga,
+                    "FTA": fta,
+                    "TOV": tov,
+                    "PLUS_MINUS": plus_minus,
+                    "NBA_FANTASY_PTS": fantasy,
+                }
+            )
+            player_id += 1
+
+    return pd.DataFrame(rows).assign(GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"]))
+
+
 def test_build_games_uses_matchup_sides() -> None:
     games = process.build_games(sample_team_game_logs())
 
@@ -227,3 +279,31 @@ def test_build_model_games_adds_home_minus_away_diffs() -> None:
     assert game_3["DIFF_CONSECUTIVE_ROAD_GAMES"] == -2
     assert "DIFF_SEASON_TO_DATE_OFF_EFG_PCT" in model_games.columns
     assert "DIFF_ROLLING_10_PACE" in model_games.columns
+
+
+def test_build_team_game_features_can_use_prior_player_logs() -> None:
+    logs = sample_team_game_logs()
+    games = process.build_games(logs)
+    features = process.build_team_game_features(
+        logs,
+        games,
+        previous_games=None,
+        player_game_logs=sample_player_game_logs(),
+    )
+    model_games = process.build_model_games(games, features)
+
+    aaa_game_1 = features.query("GAME_ID == 'G1' and TEAM_ID == 1").iloc[0]
+    aaa_game_2 = features.query("GAME_ID == 'G2' and TEAM_ID == 1").iloc[0]
+
+    assert math.isnan(aaa_game_1["ROLLING_5_PLAYER_TOP3_MIN_SHARE"])
+    assert aaa_game_2["ROLLING_5_PLAYER_ROTATION_PLAYERS_10_MIN"] == 4
+    assert aaa_game_2["ROLLING_5_PLAYER_TOP3_MIN_SHARE"] == pytest.approx(100 / 120)
+    assert aaa_game_2["ROLLING_5_PLAYER_TOP5_MIN_SHARE"] == 1.0
+    assert aaa_game_2["ROLLING_5_PLAYER_TOP3_FANTASY_SHARE"] == pytest.approx(95 / 105)
+    assert aaa_game_2["ROLLING_5_PLAYER_MIN_WEIGHTED_FANTASY_PER_36"] == pytest.approx(
+        105 * 36 / 120
+    )
+    assert aaa_game_2["ROLLING_5_PLAYER_MIN_WEIGHTED_PLUS_MINUS_PER_36"] == pytest.approx(
+        20 * 36 / 120
+    )
+    assert "DIFF_ROLLING_5_PLAYER_TOP3_FANTASY_SHARE" in model_games.columns
