@@ -138,7 +138,14 @@ def sample_team_game_logs() -> pd.DataFrame:
                 "TOV": 13,
             },
         ]
-    ).assign(GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"]))
+    ).assign(
+        GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"]),
+        FTM=lambda data: data["FTA"],
+        REB=lambda data: data["OREB"] + data["DREB"],
+        STL=0,
+        BLK=0,
+        PF=0,
+    )
 
 
 def sample_player_game_logs() -> pd.DataFrame:
@@ -171,7 +178,16 @@ def sample_player_game_logs() -> pd.DataFrame:
     game_dates = {"G1": "2025-10-01", "G2": "2025-10-02", "G3": "2025-10-05"}
 
     for game_id, players in team_players.items():
-        for team_id, abbreviation, minutes, fantasy, plus_minus, fga, fta, tov in players:
+        for (
+            team_id,
+            abbreviation,
+            minutes,
+            fantasy,
+            plus_minus,
+            fga,
+            fta,
+            tov,
+        ) in players:
             rows.append(
                 {
                     "GAME_ID": game_id,
@@ -190,7 +206,9 @@ def sample_player_game_logs() -> pd.DataFrame:
             )
             player_id += 1
 
-    return pd.DataFrame(rows).assign(GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"]))
+    return pd.DataFrame(rows).assign(
+        GAME_DATE=lambda data: pd.to_datetime(data["GAME_DATE"])
+    )
 
 
 def test_build_games_uses_matchup_sides() -> None:
@@ -217,7 +235,9 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert math.isnan(aaa_game_1["SEASON_TO_DATE_WIN_PCT"])
     assert aaa_game_1["ELO_FLAT_PRE_GAME"] == process.START_ELO
     assert aaa_game_1["ELO_CARRYOVER_PRE_GAME"] == process.START_ELO
+    assert aaa_game_1["ELO_RECENT_5_CHANGE"] == 0.0
     assert aaa_game_1["CONSECUTIVE_ROAD_GAMES"] == 0
+    assert math.isnan(aaa_game_1["WEIGHTED_15_OFF_EFG_PCT"])
 
     expected_aaa_elo_after_g1, _ = process.updated_elos(
         process.START_ELO,
@@ -232,6 +252,9 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert aaa_game_2["SEASON_TO_DATE_POINT_DIFF"] == 10.0
     assert aaa_game_2["ROLLING_5_POINT_DIFF"] == 10.0
     assert aaa_game_2["ELO_FLAT_PRE_GAME"] == pytest.approx(expected_aaa_elo_after_g1)
+    assert aaa_game_2["ELO_RECENT_5_CHANGE"] == pytest.approx(
+        expected_aaa_elo_after_g1 - process.START_ELO
+    )
     assert aaa_game_2["SEASON_TO_DATE_OFF_EFG_PCT"] == pytest.approx(45 / 80)
     assert aaa_game_2["SEASON_TO_DATE_DEF_EFG_PCT"] == pytest.approx(39 / 82)
     assert aaa_game_2["SEASON_TO_DATE_OFF_TOV_RATE"] == pytest.approx(12 / 90.8)
@@ -246,6 +269,14 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert aaa_game_2["SEASON_TO_DATE_AST_RATE"] == pytest.approx(25 / 40)
     assert aaa_game_2["SEASON_TO_DATE_OPP_AST_RATE"] == pytest.approx(20 / 35)
     assert aaa_game_2["ROLLING_5_OFF_EFG_PCT"] == pytest.approx(45 / 80)
+    assert aaa_game_2["WEIGHTED_15_OFF_EFG_PCT"] == pytest.approx(45 / 80)
+    assert aaa_game_2["WEIGHTED_15_OFF_FT_RATE"] == pytest.approx(20 / 80)
+    assert aaa_game_2["PAPER_SEASON_AVG_REB"] == 40
+    assert aaa_game_2["PAPER_SEASON_AVG_AST"] == 25
+    assert aaa_game_2["PAPER_SEASON_AVG_EFG_PCT"] == pytest.approx(45 / 80)
+    assert aaa_game_2["PAPER_SEASON_AVG_TS_PCT"] == pytest.approx(
+        100 / (2 * (80 + (0.44 * 20)))
+    )
 
     assert aaa_game_3["DAYS_REST"] == 3
     assert aaa_game_3["IS_BACK_TO_BACK"] == 0
@@ -254,6 +285,9 @@ def test_build_team_game_features_are_pre_game_values() -> None:
     assert aaa_game_3["SEASON_TO_DATE_WIN_PCT"] == 1.0
     assert aaa_game_3["SEASON_TO_DATE_POINT_DIFF"] == 10.0
     assert aaa_game_3["ROLLING_5_WIN_PCT"] == 1.0
+    assert aaa_game_3["WEIGHTED_15_OFF_EFG_PCT"] == pytest.approx(
+        (45 + (2 * 47.5)) / (80 + (2 * 83))
+    )
 
     assert bbb_game_3["DAYS_REST"] == 4
     assert bbb_game_3["SEASON_TO_DATE_WIN_PCT"] == 0.0
@@ -277,6 +311,9 @@ def test_build_model_games_adds_home_minus_away_diffs() -> None:
     assert game_3["DIFF_SEASON_TO_DATE_POINT_DIFF"] == -20.0
     assert game_3["AWAY_CONSECUTIVE_ROAD_GAMES"] == 2
     assert game_3["DIFF_CONSECUTIVE_ROAD_GAMES"] == -2
+    assert "DIFF_WEIGHTED_15_OFF_EFG_PCT" in model_games.columns
+    assert "DIFF_PAPER_SEASON_AVG_EFG_PCT" in model_games.columns
+    assert "DIFF_ELO_RECENT_5_CHANGE" in model_games.columns
     assert "DIFF_SEASON_TO_DATE_OFF_EFG_PCT" in model_games.columns
     assert "DIFF_ROLLING_10_PACE" in model_games.columns
 
@@ -303,7 +340,7 @@ def test_build_team_game_features_can_use_prior_player_logs() -> None:
     assert aaa_game_2["ROLLING_5_PLAYER_MIN_WEIGHTED_FANTASY_PER_36"] == pytest.approx(
         105 * 36 / 120
     )
-    assert aaa_game_2["ROLLING_5_PLAYER_MIN_WEIGHTED_PLUS_MINUS_PER_36"] == pytest.approx(
-        20 * 36 / 120
-    )
+    assert aaa_game_2[
+        "ROLLING_5_PLAYER_MIN_WEIGHTED_PLUS_MINUS_PER_36"
+    ] == pytest.approx(20 * 36 / 120)
     assert "DIFF_ROLLING_5_PLAYER_TOP3_FANTASY_SHARE" in model_games.columns
