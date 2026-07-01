@@ -25,6 +25,10 @@ nba-inspect-logistic = "nba_predictor.logistic_regression:inspect_main"
 nba-evaluate-logistic = "nba_predictor.logistic_regression:evaluate_main"
 nba-predict-logistic = "nba_predictor.logistic_regression:predict_main"
 nba-ablate-logistic = "nba_predictor.logistic_regression:ablate_main"
+nba-train-random-forest = "nba_predictor.random_forest:train_main"
+nba-inspect-random-forest = "nba_predictor.random_forest:inspect_main"
+nba-evaluate-random-forest = "nba_predictor.random_forest:evaluate_main"
+nba-predict-random-forest = "nba_predictor.random_forest:predict_main"
 
 [build-system]
 requires = ["setuptools>=69"]

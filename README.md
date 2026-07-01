@@ -153,3 +153,31 @@ uv run nba-ablate-logistic \
   --random-repeats 10 \
   --random-seed 0
 ```
+
+## Random Forest
+
+Train a random forest model on one processed season and save it:
+
+```bash
+uv run nba-train-random-forest 2024-25 --output models/random_forest_2024-25.pkl
+```
+
+The training command prints the number of rows used/dropped and feature importances
+sorted from highest to lowest. These are the random forest's built-in impurity-based
+feature importances.
+
+Random forest training supports the same feature arguments as logistic regression:
+
+```bash
+uv run nba-train-random-forest 2024-25 \
+  --features-file configs/features.txt \
+  --output models/random_forest_custom.pkl
+```
+
+Inspect, evaluate, or predict with a saved random forest model:
+
+```bash
+uv run nba-inspect-random-forest models/random_forest_2024-25.pkl
+uv run nba-evaluate-random-forest models/random_forest_2024-25.pkl 2025-26
+uv run nba-predict-random-forest models/random_forest_2024-25.pkl 0022500018
+```
