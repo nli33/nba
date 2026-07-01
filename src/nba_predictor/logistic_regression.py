@@ -32,7 +32,11 @@ from nba_predictor.models.logistic import (
 )
 from nba_predictor.models.logistic_ablation import (
     AblationResult,
+    SPLIT_STRATEGIES,
+    EvaluationSplit,
+    evaluation_splits,
     format_ablation_report,
+    randomized_evaluation_splits,
     rolling_splits,
     run_ablation as _run_ablation,
 )
@@ -49,9 +53,12 @@ __all__ = [
     "LogisticEvaluation",
     "LogisticRegressionModel",
     "LogisticRegressionPredictor",
+    "SPLIT_STRATEGIES",
     "ablate_main",
     "evaluate_logistic_regression",
     "evaluate_main",
+    "EvaluationSplit",
+    "evaluation_splits",
     "fit_logistic_pipeline",
     "format_ablation_report",
     "format_model_details",
@@ -66,6 +73,7 @@ __all__ = [
     "parse_train_args",
     "predict_main",
     "read_feature_file",
+    "randomized_evaluation_splits",
     "resolve_feature_columns",
     "rolling_splits",
     "run_ablation",
@@ -116,11 +124,19 @@ def run_ablation(
     seasons: list[str],
     feature_columns: list[str],
     min_train_seasons: int,
+    split_strategy: str = "chronological",
+    test_size: float = 0.2,
+    random_repeats: int = 1,
+    random_seed: int = 0,
 ) -> tuple[AblationResult, list[AblationResult]]:
     return _run_ablation(
         seasons,
         feature_columns,
         min_train_seasons,
+        split_strategy=split_strategy,
+        test_size=test_size,
+        random_repeats=random_repeats,
+        random_seed=random_seed,
         load_games=load_model_games,
     )
 
@@ -255,7 +271,31 @@ def parse_ablate_args() -> argparse.Namespace:
         "--min-train-seasons",
         type=int,
         default=1,
-        help="Number of initial seasons before the first evaluation split.",
+        help="Number of initial seasons before the first chronological evaluation split.",
+    )
+    parser.add_argument(
+        "--split-strategy",
+        choices=SPLIT_STRATEGIES,
+        default="chronological",
+        help="Train/eval split strategy. Chronological preserves the existing rolling season split.",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=0.2,
+        help="Fraction of rows assigned to eval for randomized splits.",
+    )
+    parser.add_argument(
+        "--random-repeats",
+        type=int,
+        default=1,
+        help="Number of randomized train/eval splits to run.",
+    )
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=0,
+        help="Base random seed for randomized splits.",
     )
     parser.add_argument(
         "--features",
@@ -279,9 +319,21 @@ def ablate_main() -> None:
             args.seasons,
             feature_columns,
             args.min_train_seasons,
+            split_strategy=args.split_strategy,
+            test_size=args.test_size,
+            random_repeats=args.random_repeats,
+            random_seed=args.random_seed,
         )
     except (FileNotFoundError, ValueError) as error:
         print(f"Unable to run logistic regression ablation: {error}", file=sys.stderr)
         raise SystemExit(1) from None
 
-    print(format_ablation_report(args.seasons, feature_columns, baseline, ablations))
+    print(
+        format_ablation_report(
+            args.seasons,
+            feature_columns,
+            baseline,
+            ablations,
+            split_strategy=args.split_strategy,
+        )
+    )

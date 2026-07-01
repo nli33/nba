@@ -140,3 +140,16 @@ and lines starting with `#` are ignored.
 
 The command prints progress while fitting models, then outputs one final report with
 average accuracy, correct-pick deltas, log loss, and Brier score.
+
+Run the same ablation with repeated randomized train/eval splits instead of the
+chronological season split:
+
+```bash
+uv run nba-ablate-logistic \
+  --seasons 2021-22 2022-23 2023-24 2024-25 2025-26 \
+  --features-file configs/features.txt \
+  --split-strategy randomized \
+  --test-size 0.2 \
+  --random-repeats 10 \
+  --random-seed 0
+```

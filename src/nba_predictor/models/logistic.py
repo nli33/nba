@@ -14,7 +14,10 @@ from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from nba_predictor.models.features import DEFAULT_FEATURE_COLUMNS, validate_feature_columns
+from nba_predictor.models.features import (
+    DEFAULT_FEATURE_COLUMNS,
+    validate_feature_columns,
+)
 from nba_predictor.prediction import GamePrediction, load_model_games, make_prediction
 
 
@@ -69,8 +72,12 @@ class LogisticRegressionPredictor:
                 reason="Missing logistic regression feature value",
             )
 
-        feature_frame = pd.DataFrame([features.to_dict()], columns=self.artifact.feature_columns)
-        home_win_probability = float(self.artifact.pipeline.predict_proba(feature_frame)[0][1])
+        feature_frame = pd.DataFrame(
+            [features.to_dict()], columns=self.artifact.feature_columns
+        )
+        home_win_probability = float(
+            self.artifact.pipeline.predict_proba(feature_frame)[0][1]
+        )
         if home_win_probability >= 0.5:
             predicted_team_id = int(game["HOME_TEAM_ID"])
             predicted_team_abbreviation = str(game["HOME_TEAM_ABBREVIATION"])
@@ -99,6 +106,25 @@ def fit_logistic_pipeline(train_data: pd.DataFrame, feature_columns: list[str]) 
     return pipeline
 
 
+def train_logistic_regression_from_frame(
+    model_games: pd.DataFrame,
+    train_label: str,
+    feature_columns: list[str],
+) -> LogisticRegressionModel:
+    validate_feature_columns(model_games, feature_columns)
+    train_data = model_games.dropna(subset=feature_columns + ["HOME_WIN"])
+    if train_data.empty:
+        raise ValueError(f"No complete training rows found for {train_label}")
+
+    return LogisticRegressionModel(
+        train_season=train_label,
+        feature_columns=list(feature_columns),
+        pipeline=fit_logistic_pipeline(train_data, feature_columns),
+        games_available=len(model_games),
+        games_trained=len(train_data),
+    )
+
+
 def train_logistic_regression(
     season: str,
     feature_columns: list[str] | None = None,
@@ -108,20 +134,10 @@ def train_logistic_regression(
     active_feature_columns = (
         DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
     )
-    validate_feature_columns(model_games, active_feature_columns)
-
-    train_data = model_games.dropna(subset=active_feature_columns + ["HOME_WIN"])
-    if train_data.empty:
-        raise ValueError(f"No complete training rows found for season {season}")
-
-    pipeline = fit_logistic_pipeline(train_data, active_feature_columns)
-
-    return LogisticRegressionModel(
-        train_season=season,
-        feature_columns=list(active_feature_columns),
-        pipeline=pipeline,
-        games_available=len(model_games),
-        games_trained=len(train_data),
+    return train_logistic_regression_from_frame(
+        model_games,
+        season,
+        active_feature_columns,
     )
 
 
@@ -141,18 +157,39 @@ def train_logistic_regression_for_seasons(
         games_available += len(model_games)
         frames.append(model_games)
 
-    combined = pd.concat(frames, ignore_index=True)
-    train_data = combined.dropna(subset=feature_columns + ["HOME_WIN"])
-    if train_data.empty:
-        season_list = ", ".join(seasons)
-        raise ValueError(f"No complete training rows found for seasons: {season_list}")
+    return train_logistic_regression_from_frame(
+        pd.concat(frames, ignore_index=True),
+        ", ".join(seasons),
+        feature_columns,
+    )
 
-    return LogisticRegressionModel(
-        train_season=", ".join(seasons),
-        feature_columns=list(feature_columns),
-        pipeline=fit_logistic_pipeline(train_data, feature_columns),
-        games_available=games_available,
-        games_trained=len(train_data),
+
+def evaluate_logistic_regression_on_frame(
+    artifact: LogisticRegressionModel,
+    model_games: pd.DataFrame,
+    eval_label: str,
+    train_seasons: list[str],
+) -> LogisticEvaluation:
+    validate_feature_columns(model_games, artifact.feature_columns)
+    eval_data = model_games.dropna(subset=artifact.feature_columns + ["HOME_WIN"])
+    if eval_data.empty:
+        raise ValueError(f"No complete evaluation rows found for {eval_label}")
+
+    y_true = eval_data["HOME_WIN"].astype(int)
+    probabilities = artifact.pipeline.predict_proba(
+        eval_data[artifact.feature_columns]
+    )[:, 1]
+    predictions = probabilities >= 0.5
+
+    return LogisticEvaluation(
+        train_seasons=train_seasons,
+        eval_season=eval_label,
+        feature_columns=artifact.feature_columns,
+        games_evaluated=len(model_games),
+        predictions_made=len(eval_data),
+        correct_predictions=int((predictions == y_true).sum()),
+        log_loss=float(log_loss(y_true, probabilities)),
+        brier_score=float(brier_score_loss(y_true, probabilities)),
     )
 
 
@@ -162,25 +199,11 @@ def evaluate_logistic_regression(
     train_seasons: list[str],
     load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> LogisticEvaluation:
-    model_games = load_games(eval_season)
-    validate_feature_columns(model_games, artifact.feature_columns)
-    eval_data = model_games.dropna(subset=artifact.feature_columns + ["HOME_WIN"])
-    if eval_data.empty:
-        raise ValueError(f"No complete evaluation rows found for season {eval_season}")
-
-    y_true = eval_data["HOME_WIN"].astype(int)
-    probabilities = artifact.pipeline.predict_proba(eval_data[artifact.feature_columns])[:, 1]
-    predictions = probabilities >= 0.5
-
-    return LogisticEvaluation(
-        train_seasons=train_seasons,
-        eval_season=eval_season,
-        feature_columns=artifact.feature_columns,
-        games_evaluated=len(model_games),
-        predictions_made=len(eval_data),
-        correct_predictions=int((predictions == y_true).sum()),
-        log_loss=float(log_loss(y_true, probabilities)),
-        brier_score=float(brier_score_loss(y_true, probabilities)),
+    return evaluate_logistic_regression_on_frame(
+        artifact,
+        load_games(eval_season),
+        eval_season,
+        train_seasons,
     )
 
 

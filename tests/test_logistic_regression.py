@@ -126,6 +126,28 @@ def eval_frame() -> pd.DataFrame:
     )
 
 
+def split_frame(season: str, start: int = 0) -> pd.DataFrame:
+    rows = []
+    for offset in range(12):
+        home_win = int(offset % 2 == 0)
+        strength = 6.0 if home_win else -6.0
+        rows.append(
+            {
+                "GAME_ID": f"{season}-{offset}",
+                "GAME_DATE": f"2025-02-{offset + 1:02d}",
+                "SEASON": season,
+                "HOME_TEAM_ID": start + offset,
+                "HOME_TEAM_ABBREVIATION": f"H{offset}",
+                "AWAY_TEAM_ID": start + offset + 100,
+                "AWAY_TEAM_ABBREVIATION": f"A{offset}",
+                "HOME_WIN": home_win,
+                "DIFF_POINT": strength,
+                "DIFF_REST": float(offset % 3),
+            }
+        )
+    return model_games(rows)
+
+
 def test_read_feature_file_ignores_blank_lines_and_comments(tmp_path: Path) -> None:
     path = tmp_path / "features.txt"
     path.write_text("\n# ignored\nDIFF_POINT\n\nDIFF_REST\n")
@@ -248,3 +270,78 @@ def test_evaluate_details_report_uses_logistic_probabilities(
     assert "KKK ok" in report
     assert f"NNN ok ({100 * away_pick_probability:.1f}%)" in report
     assert "no pick" in report
+
+
+def test_randomized_evaluation_splits_are_disjoint_and_repeatable() -> None:
+    frames = {
+        "2024-25": split_frame("2024-25"),
+        "2025-26": split_frame("2025-26", start=1000),
+    }
+
+    splits = lr.randomized_evaluation_splits(
+        ["2024-25", "2025-26"],
+        test_size=0.25,
+        repeats=2,
+        seed=11,
+        load_games=lambda season: frames[season],
+    )
+
+    assert [split.label for split in splits] == [
+        "random split 1/2",
+        "random split 2/2",
+    ]
+    assert [len(split.eval_data) for split in splits] == [6, 6]
+    for split in splits:
+        train_ids = set(split.train_data["SPLIT_ROW_ID"])
+        eval_ids = set(split.eval_data["SPLIT_ROW_ID"])
+        assert not train_ids.intersection(eval_ids)
+        assert len(train_ids | eval_ids) == 24
+
+    repeated = lr.randomized_evaluation_splits(
+        ["2024-25", "2025-26"],
+        test_size=0.25,
+        repeats=2,
+        seed=11,
+        load_games=lambda season: frames[season],
+    )
+    assert (
+        splits[0].eval_data["SPLIT_ROW_ID"].tolist()
+        == repeated[0].eval_data["SPLIT_ROW_ID"].tolist()
+    )
+
+
+def test_run_ablation_supports_randomized_split_strategy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames = {
+        "2024-25": split_frame("2024-25"),
+        "2025-26": split_frame("2025-26", start=1000),
+    }
+    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+
+    baseline, ablations = lr.run_ablation(
+        ["2024-25", "2025-26"],
+        ["DIFF_POINT", "DIFF_REST"],
+        min_train_seasons=1,
+        split_strategy="randomized",
+        test_size=0.25,
+        random_repeats=2,
+        random_seed=7,
+    )
+
+    assert len(baseline.evaluations) == 2
+    assert len(ablations) == 2
+    assert {evaluation.eval_season for evaluation in baseline.evaluations} == {
+        "random eval 1/2",
+        "random eval 2/2",
+    }
+
+    report = lr.format_ablation_report(
+        ["2024-25", "2025-26"],
+        ["DIFF_POINT", "DIFF_REST"],
+        baseline,
+        ablations,
+        split_strategy="randomized",
+    )
+    assert "Split strategy: randomized" in report
+    assert "Splits: 2" in report
