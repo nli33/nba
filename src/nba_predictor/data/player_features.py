@@ -101,6 +101,75 @@ def add_player_game_metrics(player_game_logs: pd.DataFrame) -> pd.DataFrame:
     return metrics[["GAME_ID", "TEAM_ID", *PLAYER_GAME_METRIC_COLUMNS]]
 
 
+AVAILABILITY_FEATURE_COLUMNS = [
+    "INACTIVE_COUNT",
+    "INACTIVE_PRIOR_MIN",
+    "INACTIVE_PRIOR_FANTASY",
+]
+
+
+def build_player_availability_features(
+    player_game_logs: pd.DataFrame,
+    games: pd.DataFrame,
+    inactives: pd.DataFrame,
+) -> pd.DataFrame:
+    """Per team-game strength lost to players declared inactive pre-tip.
+
+    Each inactive player is valued by their season-to-date average minutes and fantasy
+    points over games played strictly before this game (no leakage). Teams with no
+    inactives get zeros (full strength).
+    """
+    logs = prepare_player_game_logs(player_game_logs)
+    logs["GAME_ID"] = logs["GAME_ID"].astype(str)
+    logs = logs.sort_values(["PLAYER_ID", "GAME_DATE", "GAME_ID"], ignore_index=True)
+    by_player = logs.groupby("PLAYER_ID", group_keys=False)
+    logs["CUM_AVG_MIN"] = by_player["MIN"].transform(lambda values: values.expanding().mean())
+    logs["CUM_AVG_FANTASY"] = by_player["NBA_FANTASY_PTS"].transform(
+        lambda values: values.expanding().mean()
+    )
+    player_history = logs[
+        ["PLAYER_ID", "GAME_DATE", "CUM_AVG_MIN", "CUM_AVG_FANTASY"]
+    ].sort_values("GAME_DATE", ignore_index=True)
+
+    game_dates = games[["GAME_ID", "GAME_DATE"]].drop_duplicates().copy()
+    game_dates["GAME_ID"] = game_dates["GAME_ID"].astype(str)
+    game_dates["GAME_DATE"] = pd.to_datetime(game_dates["GAME_DATE"])
+
+    inactive = inactives.copy()
+    inactive["GAME_ID"] = inactive["GAME_ID"].astype(str)
+    inactive = inactive.merge(game_dates, on="GAME_ID", how="inner").sort_values(
+        "GAME_DATE", ignore_index=True
+    )
+    valued = pd.merge_asof(
+        inactive,
+        player_history,
+        on="GAME_DATE",
+        by="PLAYER_ID",
+        direction="backward",
+        allow_exact_matches=False,
+    )
+    valued[["CUM_AVG_MIN", "CUM_AVG_FANTASY"]] = valued[
+        ["CUM_AVG_MIN", "CUM_AVG_FANTASY"]
+    ].fillna(0.0)
+
+    aggregated = (
+        valued.groupby(["GAME_ID", "TEAM_ID"])
+        .agg(
+            INACTIVE_COUNT=("PLAYER_ID", "size"),
+            INACTIVE_PRIOR_MIN=("CUM_AVG_MIN", "sum"),
+            INACTIVE_PRIOR_FANTASY=("CUM_AVG_FANTASY", "sum"),
+        )
+        .reset_index()
+    )
+    aggregated["GAME_ID"] = aggregated["GAME_ID"].astype(str)
+
+    universe = logs[["GAME_ID", "TEAM_ID"]].drop_duplicates()
+    features = universe.merge(aggregated, on=["GAME_ID", "TEAM_ID"], how="left")
+    for column in AVAILABILITY_FEATURE_COLUMNS:
+        features[column] = features[column].fillna(0.0)
+    return features[["GAME_ID", "TEAM_ID", *AVAILABILITY_FEATURE_COLUMNS]]
+
+
 def build_player_team_features(
     player_game_logs: pd.DataFrame,
     games: pd.DataFrame,

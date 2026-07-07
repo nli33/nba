@@ -344,3 +344,60 @@ def test_build_team_game_features_can_use_prior_player_logs() -> None:
         "ROLLING_5_PLAYER_MIN_WEIGHTED_PLUS_MINUS_PER_36"
     ] == pytest.approx(20 * 36 / 120)
     assert "DIFF_ROLLING_5_PLAYER_TOP3_FANTASY_SHARE" in model_games.columns
+
+
+def availability_player_logs() -> pd.DataFrame:
+    # Player 100 (team 1) plays G1, then is inactive for G2.
+    # Player 200 (team 1) and Player 300 (team 2) play both games.
+    rows = [
+        ("G1", "2025-10-01", 100, 1, 30, 40),
+        ("G1", "2025-10-01", 200, 1, 20, 10),
+        ("G1", "2025-10-01", 300, 2, 25, 22),
+        ("G2", "2025-10-03", 200, 1, 25, 12),
+        ("G2", "2025-10-03", 300, 2, 26, 24),
+    ]
+    return pd.DataFrame(
+        [
+            {
+                "GAME_ID": game_id,
+                "GAME_DATE": game_date,
+                "PLAYER_ID": player_id,
+                "TEAM_ID": team_id,
+                "MIN": minutes,
+                "NBA_FANTASY_PTS": fantasy,
+                "PLUS_MINUS": 0,
+                "FGA": 0,
+                "FTA": 0,
+                "TOV": 0,
+            }
+            for game_id, game_date, player_id, team_id, minutes, fantasy in rows
+        ]
+    )
+
+
+def test_player_availability_values_inactives_from_prior_games_only() -> None:
+    from nba_predictor.data.player_features import build_player_availability_features
+
+    player_logs = availability_player_logs()
+    games = pd.DataFrame(
+        [
+            {"GAME_ID": "G1", "GAME_DATE": "2025-10-01"},
+            {"GAME_ID": "G2", "GAME_DATE": "2025-10-03"},
+        ]
+    )
+    # Player 100 declared inactive for G2 (team 1).
+    inactives = pd.DataFrame([{"GAME_ID": "G2", "TEAM_ID": 1, "PLAYER_ID": 100}])
+
+    features = build_player_availability_features(player_logs, games, inactives)
+    g2_team1 = features.query("GAME_ID == 'G2' and TEAM_ID == 1").iloc[0]
+    g1_team1 = features.query("GAME_ID == 'G1' and TEAM_ID == 1").iloc[0]
+    g2_team2 = features.query("GAME_ID == 'G2' and TEAM_ID == 2").iloc[0]
+
+    # Inactive player 100 is valued by their G1 (prior) stats only: 30 min, 40 fantasy.
+    assert g2_team1["INACTIVE_COUNT"] == 1
+    assert g2_team1["INACTIVE_PRIOR_MIN"] == pytest.approx(30.0)
+    assert g2_team1["INACTIVE_PRIOR_FANTASY"] == pytest.approx(40.0)
+    # Teams with nobody out are full strength (zeros), not missing rows.
+    assert g1_team1["INACTIVE_COUNT"] == 0
+    assert g1_team1["INACTIVE_PRIOR_MIN"] == 0.0
+    assert g2_team2["INACTIVE_COUNT"] == 0

@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 nba-ingest = "nba_predictor.data.ingest:main"
+nba-ingest-inactives = "nba_predictor.data.ingest:inactives_main"
 nba-process = "nba_predictor.data.process:main"
 nba-predict = "nba_predictor.prediction:main"
 nba-evaluate = "nba_predictor.evaluation:main"
