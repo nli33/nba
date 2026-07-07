@@ -14,6 +14,14 @@ PLAYER_NUMERIC_COLUMNS = [
     "PLUS_MINUS",
     "NBA_FANTASY_PTS",
 ]
+# Extra box columns needed only for Game Score (availability valuation), coerced
+# separately so they don't force every player-log caller to supply them.
+GAME_SCORE_INPUT_COLUMNS = ["PTS", "FGM", "FTM", "OREB", "DREB", "AST", "STL", "BLK", "PF"]
+# Games below this league-wide Game Score percentile are treated as replacement level
+# for value-over-replacement; computed from prior games only (expanding), so early
+# season/small samples fall back to 0 via REPLACEMENT_MIN_PERIODS below.
+REPLACEMENT_PERCENTILE = 0.1
+REPLACEMENT_MIN_PERIODS = 20
 PLAYER_GAME_METRIC_COLUMNS = [
     "PLAYER_ROTATION_PLAYERS_10_MIN",
     "PLAYER_TOP3_MIN_SHARE",
@@ -105,6 +113,18 @@ AVAILABILITY_FEATURE_COLUMNS = [
     "INACTIVE_COUNT",
     "INACTIVE_PRIOR_MIN",
     "INACTIVE_PRIOR_FANTASY",
+    "INACTIVE_PRIOR_GAMESCORE",
+    "INACTIVE_PRIOR_PLUS_MINUS",
+    "INACTIVE_RECENT_GAMESCORE",
+    "INACTIVE_VALUE_OVER_REPLACEMENT",
+    "INACTIVE_MAX_VALUE_OUT",
+]
+AVAILABILITY_VALUE_COLUMNS = [
+    "CUM_AVG_MIN",
+    "CUM_AVG_FANTASY",
+    "CUM_AVG_GAMESCORE",
+    "CUM_AVG_PLUS_MINUS",
+    "RECENT10_AVG_GAMESCORE",
 ]
 
 
@@ -115,20 +135,61 @@ def build_player_availability_features(
 ) -> pd.DataFrame:
     """Per team-game strength lost to players declared inactive pre-tip.
 
-    Each inactive player is valued by their season-to-date average minutes and fantasy
-    points over games played strictly before this game (no leakage). Teams with no
-    inactives get zeros (full strength).
+    Each inactive player is valued by season-to-date (and last-10-game) averages over
+    games played strictly before this game (no leakage): minutes, fantasy points,
+    Hollinger Game Score, and plus-minus. Value-over-replacement floors each player's
+    Game Score at a league-wide running replacement level (also computed from prior
+    games only) before summing, so bench absences don't inflate the signal the way raw
+    minutes/fantasy sums do. Teams with no inactives get zeros (full strength).
     """
     logs = prepare_player_game_logs(player_game_logs)
     logs["GAME_ID"] = logs["GAME_ID"].astype(str)
+    for column in GAME_SCORE_INPUT_COLUMNS:
+        logs[column] = pd.to_numeric(logs[column], errors="coerce").fillna(0.0).astype("float64")
+    logs["GAME_SCORE"] = (
+        logs["PTS"]
+        + 0.4 * logs["FGM"]
+        - 0.7 * logs["FGA"]
+        - 0.4 * (logs["FTA"] - logs["FTM"])
+        + 0.7 * logs["OREB"]
+        + 0.3 * logs["DREB"]
+        + logs["STL"]
+        + 0.7 * logs["AST"]
+        + 0.7 * logs["BLK"]
+        - 0.4 * logs["PF"]
+        - logs["TOV"]
+    )
+
+    league_sorted = logs.sort_values(["GAME_DATE", "GAME_ID"], ignore_index=True)
+    league_sorted["RUNNING_REPLACEMENT_GAMESCORE"] = (
+        league_sorted["GAME_SCORE"]
+        .expanding(min_periods=REPLACEMENT_MIN_PERIODS)
+        .quantile(REPLACEMENT_PERCENTILE)
+    )
+    daily_replacement = (
+        league_sorted.groupby("GAME_DATE")["RUNNING_REPLACEMENT_GAMESCORE"]
+        .last()
+        .reset_index()
+        .sort_values("GAME_DATE", ignore_index=True)
+    )
+
     logs = logs.sort_values(["PLAYER_ID", "GAME_DATE", "GAME_ID"], ignore_index=True)
     by_player = logs.groupby("PLAYER_ID", group_keys=False)
     logs["CUM_AVG_MIN"] = by_player["MIN"].transform(lambda values: values.expanding().mean())
     logs["CUM_AVG_FANTASY"] = by_player["NBA_FANTASY_PTS"].transform(
         lambda values: values.expanding().mean()
     )
+    logs["CUM_AVG_GAMESCORE"] = by_player["GAME_SCORE"].transform(
+        lambda values: values.expanding().mean()
+    )
+    logs["CUM_AVG_PLUS_MINUS"] = by_player["PLUS_MINUS"].transform(
+        lambda values: values.expanding().mean()
+    )
+    logs["RECENT10_AVG_GAMESCORE"] = by_player["GAME_SCORE"].transform(
+        lambda values: values.rolling(10, min_periods=1).mean()
+    )
     player_history = logs[
-        ["PLAYER_ID", "GAME_DATE", "CUM_AVG_MIN", "CUM_AVG_FANTASY"]
+        ["PLAYER_ID", "GAME_DATE", *AVAILABILITY_VALUE_COLUMNS]
     ].sort_values("GAME_DATE", ignore_index=True)
 
     game_dates = games[["GAME_ID", "GAME_DATE"]].drop_duplicates().copy()
@@ -148,9 +209,19 @@ def build_player_availability_features(
         direction="backward",
         allow_exact_matches=False,
     )
-    valued[["CUM_AVG_MIN", "CUM_AVG_FANTASY"]] = valued[
-        ["CUM_AVG_MIN", "CUM_AVG_FANTASY"]
+    valued = pd.merge_asof(
+        valued,
+        daily_replacement,
+        on="GAME_DATE",
+        direction="backward",
+        allow_exact_matches=False,
+    )
+    valued[[*AVAILABILITY_VALUE_COLUMNS, "RUNNING_REPLACEMENT_GAMESCORE"]] = valued[
+        [*AVAILABILITY_VALUE_COLUMNS, "RUNNING_REPLACEMENT_GAMESCORE"]
     ].fillna(0.0)
+    valued["VALUE_OVER_REPLACEMENT"] = (
+        valued["CUM_AVG_GAMESCORE"] - valued["RUNNING_REPLACEMENT_GAMESCORE"]
+    ).clip(lower=0.0)
 
     aggregated = (
         valued.groupby(["GAME_ID", "TEAM_ID"])
@@ -158,6 +229,11 @@ def build_player_availability_features(
             INACTIVE_COUNT=("PLAYER_ID", "size"),
             INACTIVE_PRIOR_MIN=("CUM_AVG_MIN", "sum"),
             INACTIVE_PRIOR_FANTASY=("CUM_AVG_FANTASY", "sum"),
+            INACTIVE_PRIOR_GAMESCORE=("CUM_AVG_GAMESCORE", "sum"),
+            INACTIVE_PRIOR_PLUS_MINUS=("CUM_AVG_PLUS_MINUS", "sum"),
+            INACTIVE_RECENT_GAMESCORE=("RECENT10_AVG_GAMESCORE", "sum"),
+            INACTIVE_VALUE_OVER_REPLACEMENT=("VALUE_OVER_REPLACEMENT", "sum"),
+            INACTIVE_MAX_VALUE_OUT=("VALUE_OVER_REPLACEMENT", "max"),
         )
         .reset_index()
     )

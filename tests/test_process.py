@@ -356,6 +356,19 @@ def availability_player_logs() -> pd.DataFrame:
         ("G2", "2025-10-03", 200, 1, 25, 12),
         ("G2", "2025-10-03", 300, 2, 26, 24),
     ]
+    # Player 100's G1 box line is set so Game Score works out to 18.5 (by hand:
+    # 20 + 0.4*8 - 0.7*15 - 0.4*(5-4) + 0.7*1 + 0.3*5 + 2 + 0.7*3 + 0.7*1 - 0.4*2 - 0).
+    box_stats = {
+        100: {
+            "PTS": 20, "FGM": 8, "FGA": 15, "FTM": 4, "FTA": 5,
+            "OREB": 1, "DREB": 5, "AST": 3, "STL": 2, "BLK": 1, "PF": 2,
+        },
+    }
+    default_box = {
+        "PTS": 0, "FGM": 0, "FGA": 0, "FTM": 0, "FTA": 0,
+        "OREB": 0, "DREB": 0, "AST": 0, "STL": 0, "BLK": 0, "PF": 0,
+    }
+    plus_minus = {100: 10}
     return pd.DataFrame(
         [
             {
@@ -365,10 +378,9 @@ def availability_player_logs() -> pd.DataFrame:
                 "TEAM_ID": team_id,
                 "MIN": minutes,
                 "NBA_FANTASY_PTS": fantasy,
-                "PLUS_MINUS": 0,
-                "FGA": 0,
-                "FTA": 0,
+                "PLUS_MINUS": plus_minus.get(player_id, 0),
                 "TOV": 0,
+                **box_stats.get(player_id, default_box),
             }
             for game_id, game_date, player_id, team_id, minutes, fantasy in rows
         ]
@@ -397,7 +409,16 @@ def test_player_availability_values_inactives_from_prior_games_only() -> None:
     assert g2_team1["INACTIVE_COUNT"] == 1
     assert g2_team1["INACTIVE_PRIOR_MIN"] == pytest.approx(30.0)
     assert g2_team1["INACTIVE_PRIOR_FANTASY"] == pytest.approx(40.0)
+    # Game Score from G1's box line (see availability_player_logs) is 18.5; with only
+    # 5 league-wide player-games logged, the replacement baseline never reaches its
+    # min-periods threshold and defaults to 0, so value-over-replacement == raw score.
+    assert g2_team1["INACTIVE_PRIOR_GAMESCORE"] == pytest.approx(18.5)
+    assert g2_team1["INACTIVE_PRIOR_PLUS_MINUS"] == pytest.approx(10.0)
+    assert g2_team1["INACTIVE_RECENT_GAMESCORE"] == pytest.approx(18.5)
+    assert g2_team1["INACTIVE_VALUE_OVER_REPLACEMENT"] == pytest.approx(18.5)
+    assert g2_team1["INACTIVE_MAX_VALUE_OUT"] == pytest.approx(18.5)
     # Teams with nobody out are full strength (zeros), not missing rows.
     assert g1_team1["INACTIVE_COUNT"] == 0
     assert g1_team1["INACTIVE_PRIOR_MIN"] == 0.0
+    assert g1_team1["INACTIVE_VALUE_OVER_REPLACEMENT"] == 0.0
     assert g2_team2["INACTIVE_COUNT"] == 0
