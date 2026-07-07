@@ -193,7 +193,7 @@ def four_factor_features(prefix: str, source: pd.DataFrame) -> pd.DataFrame:
                 source["OREB"],
                 source["OREB"] + source["OPP_DREB"],
             ),
-            f"{prefix}_OFF_FT_RATE": safe_divide(source["FTM"], source["FGA"]),
+            f"{prefix}_OFF_FT_RATE": safe_divide(source["FTA"], source["FGA"]),
             f"{prefix}_DEF_EFG_PCT": safe_divide(
                 source["OPP_FGM"] + (0.5 * source["OPP_FG3M"]),
                 source["OPP_FGA"],
@@ -205,7 +205,7 @@ def four_factor_features(prefix: str, source: pd.DataFrame) -> pd.DataFrame:
                 source["OPP_OREB"],
                 source["OPP_OREB"] + source["DREB"],
             ),
-            f"{prefix}_DEF_FT_RATE": safe_divide(source["OPP_FTM"], source["OPP_FGA"]),
+            f"{prefix}_DEF_FT_RATE": safe_divide(source["OPP_FTA"], source["OPP_FGA"]),
         },
         index=source.index,
     )
