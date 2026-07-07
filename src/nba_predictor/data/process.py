@@ -61,6 +61,7 @@ __all__ = [
     "defensive_rating",
     "expected_home_win_probability",
     "final_flat_elos",
+    "load_inactives",
     "load_previous_games",
     "load_player_game_logs",
     "load_team_game_logs",
@@ -121,6 +122,24 @@ def load_player_game_logs(season: str) -> pd.DataFrame | None:
     return data
 
 
+def load_inactives(season: str) -> pd.DataFrame | None:
+    frames = []
+
+    for season_type in SEASON_TYPES:
+        path = RAW_DATA_DIR / season / "inactives" / f"{season_type}.parquet"
+        if not path.exists():
+            continue
+
+        frames.append(pd.read_parquet(path))
+
+    if not frames:
+        return None
+
+    data = pd.concat(frames, ignore_index=True)
+    data["GAME_ID"] = data["GAME_ID"].astype(str)
+    return data
+
+
 def previous_season(season: str) -> str:
     start_year = int(season[:4])
     previous_start = start_year - 1
@@ -159,6 +178,7 @@ def load_previous_games(season: str) -> pd.DataFrame | None:
 def process_season(season: str, overwrite: bool) -> None:
     team_game_logs = load_team_game_logs(season)
     player_game_logs = load_player_game_logs(season)
+    inactives = load_inactives(season)
     previous_games = load_previous_games(season)
     season_dir = PROCESSED_DATA_DIR / season
 
@@ -174,6 +194,7 @@ def process_season(season: str, overwrite: bool) -> None:
             games,
             previous_games,
             player_game_logs,
+            inactives,
         ),
         overwrite,
     )

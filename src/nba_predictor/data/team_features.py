@@ -6,7 +6,10 @@ import pandas as pd
 
 from nba_predictor.data.elo import build_elo_features
 from nba_predictor.data.games import add_matchup_sides
-from nba_predictor.data.player_features import build_player_team_features
+from nba_predictor.data.player_features import (
+    build_player_availability_features,
+    build_player_team_features,
+)
 
 
 ROLLING_WINDOWS = (5, 10)
@@ -267,6 +270,7 @@ def build_team_game_features(
     games: pd.DataFrame,
     previous_games: pd.DataFrame | None,
     player_game_logs: pd.DataFrame | None = None,
+    inactives: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     data = add_opponent_box_score_stats(
         add_estimated_possessions(add_matchup_sides(team_game_logs))
@@ -292,6 +296,20 @@ def build_team_game_features(
             on=["GAME_ID", "TEAM_ID"],
             validate="one_to_one",
         )
+        if inactives is not None:
+            availability = build_player_availability_features(
+                player_game_logs, games, inactives
+            )
+            player_feature_columns.extend(
+                column
+                for column in availability.columns
+                if column not in {"GAME_ID", "TEAM_ID"}
+            )
+            data = data.merge(
+                availability,
+                on=["GAME_ID", "TEAM_ID"],
+                validate="one_to_one",
+            )
     data = data.sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"], ignore_index=True)
 
     by_team = data.groupby("TEAM_ID", group_keys=False)
