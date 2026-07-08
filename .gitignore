@@ -1,5 +1,8 @@
 /configs/*
 !/configs/paper_enhanced_four_factors_lr.txt
+!/configs/v3.txt
+!/configs/v4.txt
+!/configs/v5.txt
 /config/
 /data/*
 !/data/.gitkeep

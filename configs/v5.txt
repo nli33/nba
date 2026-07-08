@@ -1,0 +1,37 @@
+# v5 - v4 plus five value-aware player-availability signals. 21 features.
+# This matches DEFAULT_FEATURE_COLUMNS (models/features.py): the value-aware inactives
+# add an impact dimension (Game Score, plus-minus, value-over-replacement) and a
+# star-concentration signal (max value out) that plain volume sums can't capture.
+# Use with: uv run nba-train-logistic <season> --features-file configs/v5.txt
+# (This is also the built-in default, so --features-file is optional.)
+
+# Team strength and recent form.
+DIFF_SEASON_TO_DATE_WIN_PCT
+DIFF_SEASON_TO_DATE_POINT_DIFF
+DIFF_SEASON_TO_DATE_NET_RATING
+DIFF_ROLLING_5_WIN_PCT
+DIFF_ROLLING_5_POINT_DIFF
+DIFF_ROLLING_5_NET_RATING
+DIFF_ROLLING_10_WIN_PCT
+DIFF_ROLLING_10_POINT_DIFF
+DIFF_ROLLING_10_NET_RATING
+
+# Schedule / rest.
+DIFF_DAYS_REST
+DIFF_IS_BACK_TO_BACK
+DIFF_IS_3_IN_4
+
+# Cross-season strength carried over via Elo.
+DIFF_ELO_CARRYOVER_PRE_GAME
+
+# Pre-tip player availability - volume.
+DIFF_INACTIVE_COUNT
+DIFF_INACTIVE_PRIOR_MIN
+DIFF_INACTIVE_PRIOR_FANTASY
+
+# Pre-tip player availability - value-aware.
+DIFF_INACTIVE_PRIOR_GAMESCORE
+DIFF_INACTIVE_PRIOR_PLUS_MINUS
+DIFF_INACTIVE_RECENT_GAMESCORE
+DIFF_INACTIVE_VALUE_OVER_REPLACEMENT
+DIFF_INACTIVE_MAX_VALUE_OUT
