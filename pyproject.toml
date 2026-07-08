@@ -27,6 +27,7 @@ nba-inspect-logistic = "nba_predictor.logistic_regression:inspect_main"
 nba-evaluate-logistic = "nba_predictor.logistic_regression:evaluate_main"
 nba-predict-logistic = "nba_predictor.logistic_regression:predict_main"
 nba-ablate-logistic = "nba_predictor.logistic_regression:ablate_main"
+nba-diagnose-logistic = "nba_predictor.logistic_regression:diagnose_main"
 nba-train-random-forest = "nba_predictor.random_forest:train_main"
 nba-inspect-random-forest = "nba_predictor.random_forest:inspect_main"
 nba-evaluate-random-forest = "nba_predictor.random_forest:evaluate_main"
@@ -35,6 +36,9 @@ nba-train-lstm = "nba_predictor.lstm:train_main"
 nba-inspect-lstm = "nba_predictor.lstm:inspect_main"
 nba-evaluate-lstm = "nba_predictor.lstm:evaluate_main"
 nba-predict-lstm = "nba_predictor.lstm:predict_main"
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.9.0"]
 
 [build-system]
 requires = ["setuptools>=69"]

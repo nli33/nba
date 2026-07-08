@@ -345,3 +345,36 @@ def test_run_ablation_supports_randomized_split_strategy(
     )
     assert "Split strategy: randomized" in report
     assert "Splits: 2" in report
+
+
+def test_run_diagnostics_reports_calibration_selective_and_upsets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames = {
+        "2024-25": split_frame("2024-25"),
+        "2025-26": split_frame("2025-26", start=1000),
+    }
+    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+
+    diagnostics = lr.run_diagnostics(
+        ["2024-25", "2025-26"],
+        ["DIFF_POINT", "DIFF_REST"],
+        min_train_seasons=1,
+    )
+
+    assert diagnostics.n_games == len(frames["2025-26"])
+    assert sum(decile.count for decile in diagnostics.confidence_deciles) == diagnostics.n_games
+    assert 0.0 <= diagnostics.accuracy <= 1.0
+    # Murphy decomposition reconstructs the Brier score up to the within-bin term.
+    assert diagnostics.reliability >= 0.0
+    assert diagnostics.resolution >= 0.0
+    assert diagnostics.brier_score == pytest.approx(
+        diagnostics.reliability - diagnostics.resolution + diagnostics.uncertainty,
+        abs=1e-2,
+    )
+
+    report = lr.format_diagnostics_report(diagnostics)
+    assert "Walk-Forward Diagnostics" in report
+    assert "Calibration" in report
+    assert "Selective prediction" in report
+    assert "Upset structure" in report

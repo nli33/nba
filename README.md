@@ -147,6 +147,33 @@ and lines starting with `#` are ignored.
 The command prints progress while fitting models, then outputs one final report with
 average accuracy, correct-pick deltas, log loss, and Brier score.
 
+Run walk-forward probability diagnostics over the same rolling season splits:
+
+```bash
+uv run nba-diagnose-logistic \
+  --seasons 2015-16 2016-17 2017-18 2018-19 2019-20 2020-21 2021-22 2022-23 2023-24 2024-25 \
+  --min-train-seasons 5
+```
+
+This collects out-of-fold home-win probabilities across the expanding chronological
+splits and reports three views of them: **calibration** (expected calibration error and
+the Murphy `reliability - resolution + uncertainty` decomposition of the Brier score),
+**selective prediction** (accuracy by confidence decile — the model is much more accurate
+on the games it is most sure about), and **upset structure** (where the model's wrong
+picks fall on the confidence axis). It accepts the same `--features` / `--features-file`
+arguments as the other commands.
+
+Add `--plots-dir DIR` to also write `calibration.png`, `selective_prediction.png`, and
+`upset_structure.png`. Plotting needs the optional `viz` extra:
+
+```bash
+uv pip install -e '.[viz]'
+uv run nba-diagnose-logistic \
+  --seasons 2015-16 2016-17 2017-18 2018-19 2019-20 2020-21 2021-22 2022-23 2023-24 2024-25 \
+  --min-train-seasons 5 \
+  --plots-dir reports/diagnostics
+```
+
 Run the same ablation with repeated randomized train/eval splits instead of the
 chronological season split:
 

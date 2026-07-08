@@ -40,6 +40,12 @@ from nba_predictor.models.logistic_ablation import (
     rolling_splits,
     run_ablation as _run_ablation,
 )
+from nba_predictor.models.logistic_diagnostics import (
+    LogisticDiagnostics,
+    format_diagnostics_report,
+    run_diagnostics as _run_diagnostics,
+    save_diagnostic_plots,
+)
 from nba_predictor.prediction import (
     find_game_season,
     format_prediction,
@@ -54,19 +60,23 @@ __all__ = [
     "LogisticRegressionModel",
     "LogisticRegressionPredictor",
     "SPLIT_STRATEGIES",
+    "LogisticDiagnostics",
     "ablate_main",
+    "diagnose_main",
     "evaluate_logistic_regression",
     "evaluate_main",
     "EvaluationSplit",
     "evaluation_splits",
     "fit_logistic_pipeline",
     "format_ablation_report",
+    "format_diagnostics_report",
     "format_model_details",
     "inspect_main",
     "load_model",
     "load_model_games",
     "model_step",
     "parse_ablate_args",
+    "parse_diagnose_args",
     "parse_evaluate_args",
     "parse_inspect_args",
     "parse_predict_args",
@@ -77,6 +87,8 @@ __all__ = [
     "resolve_feature_columns",
     "rolling_splits",
     "run_ablation",
+    "run_diagnostics",
+    "save_diagnostic_plots",
     "save_model",
     "train_logistic_regression",
     "train_logistic_regression_for_seasons",
@@ -137,6 +149,19 @@ def run_ablation(
         test_size=test_size,
         random_repeats=random_repeats,
         random_seed=random_seed,
+        load_games=load_model_games,
+    )
+
+
+def run_diagnostics(
+    seasons: list[str],
+    feature_columns: list[str],
+    min_train_seasons: int = 1,
+) -> LogisticDiagnostics:
+    return _run_diagnostics(
+        seasons,
+        feature_columns,
+        min_train_seasons,
         load_games=load_model_games,
     )
 
@@ -337,3 +362,66 @@ def ablate_main() -> None:
             split_strategy=args.split_strategy,
         )
     )
+
+
+def parse_diagnose_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Report walk-forward probability diagnostics for logistic regression."
+    )
+    parser.add_argument(
+        "--seasons",
+        nargs="+",
+        required=True,
+        help="Chronological seasons to use for rolling train/eval splits.",
+    )
+    parser.add_argument(
+        "--min-train-seasons",
+        type=int,
+        default=1,
+        help="Number of initial seasons before the first chronological evaluation split.",
+    )
+    parser.add_argument(
+        "--features",
+        nargs="+",
+        help="Feature column names to use instead of the default feature set.",
+    )
+    parser.add_argument(
+        "--features-file",
+        type=Path,
+        help="Text file with one feature column per line. Blank lines and # comments are ignored.",
+    )
+    parser.add_argument(
+        "--plots-dir",
+        type=Path,
+        help="Directory to write calibration, selective-prediction, and upset PNG charts "
+        "(requires the optional viz extra).",
+    )
+    return parser.parse_args()
+
+
+def diagnose_main() -> None:
+    """Report logistic regression walk-forward probability diagnostics."""
+    args = parse_diagnose_args()
+    try:
+        feature_columns = resolve_feature_columns(args)
+        diagnostics = run_diagnostics(
+            args.seasons,
+            feature_columns,
+            args.min_train_seasons,
+        )
+    except (FileNotFoundError, ValueError) as error:
+        print(f"Unable to run logistic regression diagnostics: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    print(format_diagnostics_report(diagnostics))
+
+    if args.plots_dir is not None:
+        try:
+            paths = save_diagnostic_plots(diagnostics, args.plots_dir)
+        except ModuleNotFoundError as error:
+            print(f"Unable to write diagnostic plots: {error}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print("")
+        print("Saved plots:")
+        for path in paths:
+            print(f"  {path}")
