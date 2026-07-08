@@ -11,6 +11,7 @@ dependencies = [
     "pandas>=3.0.3",
     "pyarrow>=24.0.0",
     "scikit-learn>=1.9.0",
+    "torch>=2.4.0",
     "tqdm>=4.68.3",
 ]
 
@@ -30,6 +31,10 @@ nba-train-random-forest = "nba_predictor.random_forest:train_main"
 nba-inspect-random-forest = "nba_predictor.random_forest:inspect_main"
 nba-evaluate-random-forest = "nba_predictor.random_forest:evaluate_main"
 nba-predict-random-forest = "nba_predictor.random_forest:predict_main"
+nba-train-lstm = "nba_predictor.lstm:train_main"
+nba-inspect-lstm = "nba_predictor.lstm:inspect_main"
+nba-evaluate-lstm = "nba_predictor.lstm:evaluate_main"
+nba-predict-lstm = "nba_predictor.lstm:predict_main"
 
 [build-system]
 requires = ["setuptools>=69"]
