@@ -76,6 +76,24 @@ Ranked levers to break past 2/3 (all live-deployable):
 >72% pre-game/no-odds is likely chasing leakage. The win is squeezing 2–3 honest points via
 player availability, not a leap.
 
+## D. Empirical confirmation (2026-07-07)
+
+Walk-forward test (expanding train pool from 2010-11, StandardScaler + logistic regression,
+regular season only), measured on this project's processed data:
+
+- Team-aggregate features only (Elo + rolling four-factors + player-rotation, 67 cols):
+  **~64.7%** mean test accuracy over eval seasons 2021-22…2024-25.
+- **Adding the pre-tip inactives features → ~66.7%** mean test accuracy, with a train/test
+  accuracy gap of ~0.00 (no overfitting) and lower log loss. Single most recent season
+  (train 2023-24 → eval 2024-25) reaches **67.7%** (68.6% when predicted).
+
+This confirms lever #1: player availability buys ~2 honest points and moves us from the
+team-aggregate plateau toward the ceiling. Regularization sweeps (L1/L2/elasticnet) and
+gradient boosting (HistGradientBoosting) did **not** beat regularized logistic regression on
+this feature set — consistent with the "feature-limited, not model-limited" diagnosis. The
+enhanced set is now `DEFAULT_FEATURE_COLUMNS`. Reaching low-70s would require the next lever
+(player-based roster/RAPM ratings aggregated to the expected lineup), not more model tuning.
+
 ## Sources
 
 - Long-Sequence LSTM for NBA — https://arxiv.org/abs/2512.08591

@@ -9,6 +9,7 @@ import pandas as pd
 
 
 DEFAULT_FEATURE_COLUMNS = [
+    # Team strength and recent form.
     "DIFF_SEASON_TO_DATE_WIN_PCT",
     "DIFF_SEASON_TO_DATE_POINT_DIFF",
     "DIFF_SEASON_TO_DATE_NET_RATING",
@@ -18,9 +19,22 @@ DEFAULT_FEATURE_COLUMNS = [
     "DIFF_ROLLING_10_WIN_PCT",
     "DIFF_ROLLING_10_POINT_DIFF",
     "DIFF_ROLLING_10_NET_RATING",
+    # Schedule / rest.
     "DIFF_DAYS_REST",
     "DIFF_IS_BACK_TO_BACK",
     "DIFF_IS_3_IN_4",
+    # Cross-season strength carried over via Elo.
+    "DIFF_ELO_CARRYOVER_PRE_GAME",
+    # Pre-tip player availability (declared inactives). Available from 2005-06 on;
+    # the strongest single lever over team-aggregate form (see docs/related-work).
+    "DIFF_INACTIVE_COUNT",
+    "DIFF_INACTIVE_PRIOR_MIN",
+    "DIFF_INACTIVE_PRIOR_FANTASY",
+    "DIFF_INACTIVE_PRIOR_GAMESCORE",
+    "DIFF_INACTIVE_PRIOR_PLUS_MINUS",
+    "DIFF_INACTIVE_RECENT_GAMESCORE",
+    "DIFF_INACTIVE_VALUE_OVER_REPLACEMENT",
+    "DIFF_INACTIVE_MAX_VALUE_OUT",
 ]
 
 

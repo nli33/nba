@@ -80,8 +80,14 @@ uv run nba-train-logistic 2024-25 --output models/logistic_regression_2024-25.pk
 The training command prints the number of rows used/dropped, the intercept, and learned
 coefficients sorted by absolute magnitude.
 
-By default, training uses the built-in preliminary feature set. To train with explicit
-feature columns instead:
+By default, training uses the built-in feature set (`DEFAULT_FEATURE_COLUMNS`): team
+strength/form (season-to-date and rolling win%, point differential, net rating),
+schedule/rest, cross-season Elo carryover, and pre-tip player-availability (declared
+inactives) features. The availability features are the strongest single lever over
+team-aggregate form (see `docs/related-work-nba-prediction.md`) and are populated from
+the 2005-06 season on; training on earlier seasons requires an explicit feature set.
+
+To train with explicit feature columns instead:
 
 ```bash
 uv run nba-train-logistic 2024-25 \
