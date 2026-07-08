@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from nba_predictor import evaluation
-from nba_predictor import random_forest as rf
+from nba_predictor.models import random_forest as rf
 
 
 def model_games(rows: list[dict[str, object]]) -> pd.DataFrame:
@@ -181,7 +181,7 @@ def test_evaluate_details_report_uses_random_forest_probabilities(
     assert away_prediction.home_win_probability is not None
     away_pick_probability = 1 - away_prediction.home_win_probability
 
-    report = rf.format_game_predictions("2025-26", [predictor])
+    report = evaluation.format_game_predictions("2025-26", [predictor])
 
     assert "Detailed Game Predictions" in report
     assert "LLL at KKK" in report

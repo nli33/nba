@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pickle
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -123,14 +122,12 @@ def train_random_forest_from_frame(
 def train_random_forest(
     season: str,
     feature_columns: list[str] | None = None,
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> RandomForestModel:
-    model_games = load_games(season)
     active_feature_columns = (
         DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
     )
     return train_random_forest_from_frame(
-        model_games,
+        load_model_games(season),
         season,
         active_feature_columns,
     )
@@ -139,14 +136,13 @@ def train_random_forest(
 def train_random_forest_for_seasons(
     seasons: list[str],
     feature_columns: list[str],
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> RandomForestModel:
     if not seasons:
         raise ValueError("At least one training season is required")
 
     frames = []
     for season in seasons:
-        model_games = load_games(season)
+        model_games = load_model_games(season)
         validate_feature_columns(model_games, feature_columns)
         frames.append(model_games)
 
@@ -188,11 +184,10 @@ def evaluate_random_forest(
     artifact: RandomForestModel,
     eval_season: str,
     train_seasons: list[str],
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> RandomForestEvaluation:
     return evaluate_random_forest_on_frame(
         artifact,
-        load_games(eval_season),
+        load_model_games(eval_season),
         eval_season,
         train_seasons,
     )

@@ -11,93 +11,19 @@ from nba_predictor.evaluation import (
     format_evaluation,
     format_game_predictions,
 )
-from nba_predictor.models.features import (
-    DEFAULT_FEATURE_COLUMNS,
-    read_feature_file,
-    resolve_feature_columns,
-    validate_feature_columns,
-)
+from nba_predictor.models.features import resolve_feature_columns
 from nba_predictor.models.random_forest import (
-    RandomForestEvaluation,
-    RandomForestModel,
     RandomForestPredictor,
-    evaluate_random_forest as _evaluate_random_forest,
-    feature_importances,
-    fit_random_forest,
     format_model_details,
     load_model,
     save_model,
-    train_random_forest as _train_random_forest,
-    train_random_forest_for_seasons as _train_random_forest_for_seasons,
+    train_random_forest,
 )
 from nba_predictor.prediction import (
     find_game_season,
     format_prediction,
-    load_model_games,
     predict_game_by_id,
 )
-
-__all__ = [
-    "DEFAULT_FEATURE_COLUMNS",
-    "RandomForestEvaluation",
-    "RandomForestModel",
-    "RandomForestPredictor",
-    "evaluate_main",
-    "evaluate_random_forest",
-    "feature_importances",
-    "fit_random_forest",
-    "format_model_details",
-    "inspect_main",
-    "load_model",
-    "load_model_games",
-    "parse_evaluate_args",
-    "parse_inspect_args",
-    "parse_predict_args",
-    "parse_train_args",
-    "predict_main",
-    "read_feature_file",
-    "resolve_feature_columns",
-    "save_model",
-    "train_main",
-    "train_random_forest",
-    "train_random_forest_for_seasons",
-    "validate_feature_columns",
-]
-
-
-def train_random_forest(
-    season: str,
-    feature_columns: list[str] | None = None,
-) -> RandomForestModel:
-    return _train_random_forest(
-        season,
-        feature_columns,
-        load_games=load_model_games,
-    )
-
-
-def train_random_forest_for_seasons(
-    seasons: list[str],
-    feature_columns: list[str],
-) -> RandomForestModel:
-    return _train_random_forest_for_seasons(
-        seasons,
-        feature_columns,
-        load_games=load_model_games,
-    )
-
-
-def evaluate_random_forest(
-    artifact: RandomForestModel,
-    eval_season: str,
-    train_seasons: list[str],
-) -> RandomForestEvaluation:
-    return _evaluate_random_forest(
-        artifact,
-        eval_season,
-        train_seasons,
-        load_games=load_model_games,
-    )
 
 
 def parse_train_args() -> argparse.Namespace:

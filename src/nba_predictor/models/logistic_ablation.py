@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -84,13 +83,10 @@ def rolling_splits(
     ]
 
 
-def load_combined_games(
-    seasons: list[str],
-    load_games: Callable[[str], pd.DataFrame],
-) -> pd.DataFrame:
+def load_combined_games(seasons: list[str]) -> pd.DataFrame:
     frames = []
     for season in seasons:
-        frame = load_games(season).copy()
+        frame = load_model_games(season).copy()
         frame["SPLIT_SOURCE_SEASON"] = season
         frames.append(frame)
     combined = pd.concat(frames, ignore_index=True)
@@ -101,7 +97,6 @@ def load_combined_games(
 def chronological_evaluation_splits(
     seasons: list[str],
     min_train_seasons: int,
-    load_games: Callable[[str], pd.DataFrame],
 ) -> list[EvaluationSplit]:
     return [
         EvaluationSplit(
@@ -109,10 +104,10 @@ def chronological_evaluation_splits(
             train_label=", ".join(train_seasons),
             eval_label=eval_season,
             train_data=pd.concat(
-                [load_games(season) for season in train_seasons],
+                [load_model_games(season) for season in train_seasons],
                 ignore_index=True,
             ),
-            eval_data=load_games(eval_season),
+            eval_data=load_model_games(eval_season),
         )
         for train_seasons, eval_season in rolling_splits(seasons, min_train_seasons)
     ]
@@ -123,14 +118,13 @@ def randomized_evaluation_splits(
     test_size: float,
     repeats: int,
     seed: int,
-    load_games: Callable[[str], pd.DataFrame],
 ) -> list[EvaluationSplit]:
     if not 0 < test_size < 1:
         raise ValueError("--test-size must be greater than 0 and less than 1")
     if repeats < 1:
         raise ValueError("--random-repeats must be at least 1")
 
-    combined = load_combined_games(seasons, load_games)
+    combined = load_combined_games(seasons)
     if len(combined) < 2:
         raise ValueError("Need at least two rows for randomized train/eval splits")
 
@@ -166,17 +160,15 @@ def evaluation_splits(
     test_size: float,
     random_repeats: int,
     random_seed: int,
-    load_games: Callable[[str], pd.DataFrame],
 ) -> list[EvaluationSplit]:
     if split_strategy == "chronological":
-        return chronological_evaluation_splits(seasons, min_train_seasons, load_games)
+        return chronological_evaluation_splits(seasons, min_train_seasons)
     if split_strategy == "randomized":
         return randomized_evaluation_splits(
             seasons,
             test_size,
             random_repeats,
             random_seed,
-            load_games,
         )
     raise ValueError(f"Unknown split strategy: {split_strategy}")
 
@@ -189,7 +181,6 @@ def run_ablation(
     test_size: float = 0.2,
     random_repeats: int = 1,
     random_seed: int = 0,
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> tuple[AblationResult, list[AblationResult]]:
     if len(feature_columns) < 2:
         raise ValueError("At least two feature columns are required for ablation")
@@ -201,7 +192,6 @@ def run_ablation(
         test_size,
         random_repeats,
         random_seed,
-        load_games,
     )
     candidates: list[tuple[str | None, list[str]]] = [(None, feature_columns)]
     candidates.extend(

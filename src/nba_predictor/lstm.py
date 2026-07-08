@@ -11,7 +11,7 @@ from nba_predictor.evaluation import (
     format_evaluation,
     format_game_predictions,
 )
-from nba_predictor.models.features import read_feature_file, resolve_feature_columns
+from nba_predictor.models.features import resolve_feature_columns
 from nba_predictor.models.lstm import (
     DEFAULT_EPOCHS,
     DEFAULT_HIDDEN_SIZE,
@@ -20,15 +20,12 @@ from nba_predictor.models.lstm import (
     DEFAULT_SEQUENCE_FEATURES,
     DEFAULT_SEQUENCE_LENGTH,
     DEFAULT_VALIDATION_FRACTION,
-    LSTMEvaluation,
-    LSTMModel,
     LSTMPredictor,
-    evaluate_lstm as _evaluate_lstm,
     format_model_details,
     load_model,
     save_model,
-    train_lstm as _train_lstm,
-    train_lstm_for_seasons as _train_lstm_for_seasons,
+    train_lstm,
+    train_lstm_for_seasons,
 )
 from nba_predictor.prediction import (
     find_game_season,
@@ -36,86 +33,9 @@ from nba_predictor.prediction import (
     predict_game_by_id,
 )
 
-__all__ = [
-    "DEFAULT_SEQUENCE_FEATURES",
-    "LSTMEvaluation",
-    "LSTMModel",
-    "LSTMPredictor",
-    "evaluate_lstm",
-    "evaluate_main",
-    "format_model_details",
-    "inspect_main",
-    "load_model",
-    "parse_evaluate_args",
-    "parse_inspect_args",
-    "parse_predict_args",
-    "parse_train_args",
-    "predict_main",
-    "read_feature_file",
-    "resolve_sequence_features",
-    "save_model",
-    "train_lstm",
-    "train_lstm_for_seasons",
-    "train_main",
-]
-
 
 def resolve_sequence_features(args: argparse.Namespace) -> list[str]:
     return resolve_feature_columns(args, default=DEFAULT_SEQUENCE_FEATURES)
-
-
-def train_lstm(
-    season: str,
-    feature_columns: list[str] | None,
-    *,
-    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
-    min_history: int = DEFAULT_MIN_HISTORY,
-    hidden_size: int = DEFAULT_HIDDEN_SIZE,
-    epochs: int = DEFAULT_EPOCHS,
-    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
-    patience: int = DEFAULT_PATIENCE,
-) -> LSTMModel:
-    return _train_lstm(
-        season,
-        feature_columns,
-        sequence_length=sequence_length,
-        min_history=min_history,
-        hidden_size=hidden_size,
-        epochs=epochs,
-        validation_fraction=validation_fraction,
-        patience=patience,
-    )
-
-
-def train_lstm_for_seasons(
-    seasons: list[str],
-    feature_columns: list[str],
-    *,
-    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
-    min_history: int = DEFAULT_MIN_HISTORY,
-    hidden_size: int = DEFAULT_HIDDEN_SIZE,
-    epochs: int = DEFAULT_EPOCHS,
-    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
-    patience: int = DEFAULT_PATIENCE,
-) -> LSTMModel:
-    return _train_lstm_for_seasons(
-        seasons,
-        feature_columns,
-        sequence_length=sequence_length,
-        min_history=min_history,
-        hidden_size=hidden_size,
-        epochs=epochs,
-        validation_fraction=validation_fraction,
-        patience=patience,
-    )
-
-
-def evaluate_lstm(
-    artifact: LSTMModel,
-    eval_season: str,
-    train_seasons: list[str],
-) -> LSTMEvaluation:
-    return _evaluate_lstm(artifact, eval_season, train_seasons)
 
 
 def add_model_hyperparameters(parser: argparse.ArgumentParser) -> None:

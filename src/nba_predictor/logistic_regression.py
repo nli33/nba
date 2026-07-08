@@ -11,159 +11,29 @@ from nba_predictor.evaluation import (
     format_evaluation,
     format_game_predictions,
 )
-from nba_predictor.models.features import (
-    DEFAULT_FEATURE_COLUMNS,
-    read_feature_file,
-    resolve_feature_columns,
-    validate_feature_columns,
-)
+from nba_predictor.models.features import resolve_feature_columns
 from nba_predictor.models.logistic import (
-    LogisticEvaluation,
-    LogisticRegressionModel,
     LogisticRegressionPredictor,
-    evaluate_logistic_regression as _evaluate_logistic_regression,
-    fit_logistic_pipeline,
     format_model_details,
     load_model,
-    model_step,
     save_model,
-    train_logistic_regression as _train_logistic_regression,
-    train_logistic_regression_for_seasons as _train_logistic_regression_for_seasons,
+    train_logistic_regression,
 )
 from nba_predictor.models.logistic_ablation import (
-    AblationResult,
     SPLIT_STRATEGIES,
-    EvaluationSplit,
-    evaluation_splits,
     format_ablation_report,
-    randomized_evaluation_splits,
-    rolling_splits,
-    run_ablation as _run_ablation,
+    run_ablation,
 )
 from nba_predictor.models.logistic_diagnostics import (
-    LogisticDiagnostics,
     format_diagnostics_report,
-    run_diagnostics as _run_diagnostics,
+    run_diagnostics,
     save_diagnostic_plots,
 )
 from nba_predictor.prediction import (
     find_game_season,
     format_prediction,
-    load_model_games,
     predict_game_by_id,
 )
-
-__all__ = [
-    "AblationResult",
-    "DEFAULT_FEATURE_COLUMNS",
-    "LogisticEvaluation",
-    "LogisticRegressionModel",
-    "LogisticRegressionPredictor",
-    "SPLIT_STRATEGIES",
-    "LogisticDiagnostics",
-    "ablate_main",
-    "diagnose_main",
-    "evaluate_logistic_regression",
-    "evaluate_main",
-    "EvaluationSplit",
-    "evaluation_splits",
-    "fit_logistic_pipeline",
-    "format_ablation_report",
-    "format_diagnostics_report",
-    "format_model_details",
-    "inspect_main",
-    "load_model",
-    "load_model_games",
-    "model_step",
-    "parse_ablate_args",
-    "parse_diagnose_args",
-    "parse_evaluate_args",
-    "parse_inspect_args",
-    "parse_predict_args",
-    "parse_train_args",
-    "predict_main",
-    "read_feature_file",
-    "randomized_evaluation_splits",
-    "resolve_feature_columns",
-    "rolling_splits",
-    "run_ablation",
-    "run_diagnostics",
-    "save_diagnostic_plots",
-    "save_model",
-    "train_logistic_regression",
-    "train_logistic_regression_for_seasons",
-    "train_main",
-    "validate_feature_columns",
-]
-
-
-def train_logistic_regression(
-    season: str,
-    feature_columns: list[str] | None = None,
-) -> LogisticRegressionModel:
-    return _train_logistic_regression(
-        season,
-        feature_columns,
-        load_games=load_model_games,
-    )
-
-
-def train_logistic_regression_for_seasons(
-    seasons: list[str],
-    feature_columns: list[str],
-) -> LogisticRegressionModel:
-    return _train_logistic_regression_for_seasons(
-        seasons,
-        feature_columns,
-        load_games=load_model_games,
-    )
-
-
-def evaluate_logistic_regression(
-    artifact: LogisticRegressionModel,
-    eval_season: str,
-    train_seasons: list[str],
-) -> LogisticEvaluation:
-    return _evaluate_logistic_regression(
-        artifact,
-        eval_season,
-        train_seasons,
-        load_games=load_model_games,
-    )
-
-
-def run_ablation(
-    seasons: list[str],
-    feature_columns: list[str],
-    min_train_seasons: int,
-    split_strategy: str = "chronological",
-    test_size: float = 0.2,
-    random_repeats: int = 1,
-    random_seed: int = 0,
-) -> tuple[AblationResult, list[AblationResult]]:
-    return _run_ablation(
-        seasons,
-        feature_columns,
-        min_train_seasons,
-        split_strategy=split_strategy,
-        test_size=test_size,
-        random_repeats=random_repeats,
-        random_seed=random_seed,
-        load_games=load_model_games,
-    )
-
-
-def run_diagnostics(
-    seasons: list[str],
-    feature_columns: list[str],
-    min_train_seasons: int = 1,
-) -> LogisticDiagnostics:
-    return _run_diagnostics(
-        seasons,
-        feature_columns,
-        min_train_seasons,
-        load_games=load_model_games,
-    )
 
 
 def parse_train_args() -> argparse.Namespace:

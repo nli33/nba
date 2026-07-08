@@ -10,17 +10,14 @@ structure (where the model's wrong picks fall on the confidence axis).
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from sklearn.metrics import brier_score_loss, log_loss
 
 from nba_predictor.models.logistic import fit_logistic_pipeline
 from nba_predictor.models.logistic_ablation import chronological_evaluation_splits
-from nba_predictor.prediction import load_model_games
 
 
 CALIBRATION_BINS = 10
@@ -80,9 +77,8 @@ def _collect_walk_forward_probabilities(
     seasons: list[str],
     feature_columns: list[str],
     min_train_seasons: int,
-    load_games: Callable[[str], pd.DataFrame],
 ) -> tuple[np.ndarray, np.ndarray]:
-    splits = chronological_evaluation_splits(seasons, min_train_seasons, load_games)
+    splits = chronological_evaluation_splits(seasons, min_train_seasons)
     probabilities: list[np.ndarray] = []
     outcomes: list[np.ndarray] = []
     for index, split in enumerate(splits, start=1):
@@ -185,13 +181,12 @@ def run_diagnostics(
     seasons: list[str],
     feature_columns: list[str],
     min_train_seasons: int = 1,
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> LogisticDiagnostics:
     if len(feature_columns) < 1:
         raise ValueError("At least one feature column is required")
 
     probabilities, outcomes = _collect_walk_forward_probabilities(
-        seasons, feature_columns, min_train_seasons, load_games
+        seasons, feature_columns, min_train_seasons
     )
     predictions = (probabilities >= 0.5).astype(int)
     bins, ece, reliability, resolution, uncertainty = _calibration(

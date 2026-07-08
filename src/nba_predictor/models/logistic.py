@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pickle
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -128,14 +127,12 @@ def train_logistic_regression_from_frame(
 def train_logistic_regression(
     season: str,
     feature_columns: list[str] | None = None,
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> LogisticRegressionModel:
-    model_games = load_games(season)
     active_feature_columns = (
         DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
     )
     return train_logistic_regression_from_frame(
-        model_games,
+        load_model_games(season),
         season,
         active_feature_columns,
     )
@@ -144,17 +141,14 @@ def train_logistic_regression(
 def train_logistic_regression_for_seasons(
     seasons: list[str],
     feature_columns: list[str],
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> LogisticRegressionModel:
     if not seasons:
         raise ValueError("At least one training season is required")
 
     frames = []
-    games_available = 0
     for season in seasons:
-        model_games = load_games(season)
+        model_games = load_model_games(season)
         validate_feature_columns(model_games, feature_columns)
-        games_available += len(model_games)
         frames.append(model_games)
 
     return train_logistic_regression_from_frame(
@@ -197,11 +191,10 @@ def evaluate_logistic_regression(
     artifact: LogisticRegressionModel,
     eval_season: str,
     train_seasons: list[str],
-    load_games: Callable[[str], pd.DataFrame] = load_model_games,
 ) -> LogisticEvaluation:
     return evaluate_logistic_regression_on_frame(
         artifact,
-        load_games(eval_season),
+        load_model_games(eval_season),
         eval_season,
         train_seasons,
     )

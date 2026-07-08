@@ -7,7 +7,10 @@ import pandas as pd
 import pytest
 
 from nba_predictor import evaluation
-from nba_predictor import logistic_regression as lr
+from nba_predictor.models import features
+from nba_predictor.models import logistic
+from nba_predictor.models import logistic_ablation
+from nba_predictor.models import logistic_diagnostics
 
 
 def model_games(rows: list[dict[str, object]]) -> pd.DataFrame:
@@ -152,7 +155,7 @@ def test_read_feature_file_ignores_blank_lines_and_comments(tmp_path: Path) -> N
     path = tmp_path / "features.txt"
     path.write_text("\n# ignored\nDIFF_POINT\n\nDIFF_REST\n")
 
-    assert lr.read_feature_file(path) == ["DIFF_POINT", "DIFF_REST"]
+    assert features.read_feature_file(path) == ["DIFF_POINT", "DIFF_REST"]
 
 
 def test_resolve_feature_columns_rejects_ambiguous_sources(tmp_path: Path) -> None:
@@ -162,18 +165,18 @@ def test_resolve_feature_columns_rejects_ambiguous_sources(tmp_path: Path) -> No
     )
 
     with pytest.raises(ValueError, match="Use either --features or --features-file"):
-        lr.resolve_feature_columns(args)
+        features.resolve_feature_columns(args)
 
 
 def test_validate_feature_columns_rejects_empty_duplicates_and_missing() -> None:
     frame = train_frame()
 
     with pytest.raises(ValueError, match="At least one feature"):
-        lr.validate_feature_columns(frame, [])
+        features.validate_feature_columns(frame, [])
     with pytest.raises(ValueError, match="Duplicate feature"):
-        lr.validate_feature_columns(frame, ["DIFF_POINT", "DIFF_POINT"])
+        features.validate_feature_columns(frame, ["DIFF_POINT", "DIFF_POINT"])
     with pytest.raises(ValueError, match="Feature columns not found"):
-        lr.validate_feature_columns(frame, ["DOES_NOT_EXIST"])
+        features.validate_feature_columns(frame, ["DOES_NOT_EXIST"])
 
 
 def test_train_evaluate_predict_and_save_round_trip(
@@ -184,10 +187,10 @@ def test_train_evaluate_predict_and_save_round_trip(
         "2024-25": train_frame(),
         "2025-26": eval_frame(),
     }
-    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+    monkeypatch.setattr(logistic, "load_model_games", lambda season: frames[season])
     feature_columns = ["DIFF_POINT", "DIFF_REST"]
 
-    artifact = lr.train_logistic_regression("2024-25", feature_columns)
+    artifact = logistic.train_logistic_regression("2024-25", feature_columns)
 
     assert artifact.train_season == "2024-25"
     assert artifact.feature_columns == feature_columns
@@ -195,7 +198,7 @@ def test_train_evaluate_predict_and_save_round_trip(
     assert artifact.games_trained == 4
     assert artifact.games_dropped == 1
 
-    evaluation = lr.evaluate_logistic_regression(
+    evaluation = logistic.evaluate_logistic_regression(
         artifact,
         "2025-26",
         train_seasons=["2024-25"],
@@ -209,7 +212,7 @@ def test_train_evaluate_predict_and_save_round_trip(
     assert 0.0 < evaluation.log_loss < 1.0
     assert 0.0 < evaluation.brier_score < 1.0
 
-    predictor = lr.LogisticRegressionPredictor(artifact)
+    predictor = logistic.LogisticRegressionPredictor(artifact)
     home_prediction = predictor.predict(frames["2025-26"].iloc[0])
     away_prediction = predictor.predict(frames["2025-26"].iloc[1])
     null_prediction = predictor.predict(frames["2025-26"].iloc[2])
@@ -219,8 +222,8 @@ def test_train_evaluate_predict_and_save_round_trip(
     assert null_prediction.is_null
 
     model_path = tmp_path / "model.pkl"
-    lr.save_model(artifact, model_path)
-    loaded_artifact = lr.load_model(model_path)
+    logistic.save_model(artifact, model_path)
+    loaded_artifact = logistic.load_model(model_path)
 
     assert loaded_artifact.feature_columns == artifact.feature_columns
     assert loaded_artifact.games_trained == artifact.games_trained
@@ -229,10 +232,10 @@ def test_train_evaluate_predict_and_save_round_trip(
 def test_format_model_details_sorts_coefficients_by_magnitude(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(lr, "load_model_games", lambda season: train_frame())
-    artifact = lr.train_logistic_regression("2024-25", ["DIFF_POINT", "DIFF_REST"])
+    monkeypatch.setattr(logistic, "load_model_games", lambda season: train_frame())
+    artifact = logistic.train_logistic_regression("2024-25", ["DIFF_POINT", "DIFF_REST"])
 
-    report = lr.format_model_details(
+    report = logistic.format_model_details(
         artifact,
         Path("models/test.pkl"),
         "Logistic Regression Model",
@@ -253,16 +256,16 @@ def test_evaluate_details_report_uses_logistic_probabilities(
         "2024-25": train_frame(),
         "2025-26": eval_frame(),
     }
-    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+    monkeypatch.setattr(logistic, "load_model_games", lambda season: frames[season])
     monkeypatch.setattr(evaluation, "load_model_games", lambda season: frames[season])
-    artifact = lr.train_logistic_regression("2024-25", ["DIFF_POINT", "DIFF_REST"])
+    artifact = logistic.train_logistic_regression("2024-25", ["DIFF_POINT", "DIFF_REST"])
 
-    predictor = lr.LogisticRegressionPredictor(artifact)
+    predictor = logistic.LogisticRegressionPredictor(artifact)
     away_prediction = predictor.predict(frames["2025-26"].iloc[1])
     assert away_prediction.home_win_probability is not None
     away_pick_probability = 1 - away_prediction.home_win_probability
 
-    report = lr.format_game_predictions("2025-26", [predictor])
+    report = evaluation.format_game_predictions("2025-26", [predictor])
 
     assert "Detailed Game Predictions" in report
     assert "KKK at LLL" not in report
@@ -272,18 +275,20 @@ def test_evaluate_details_report_uses_logistic_probabilities(
     assert "no pick" in report
 
 
-def test_randomized_evaluation_splits_are_disjoint_and_repeatable() -> None:
+def test_randomized_evaluation_splits_are_disjoint_and_repeatable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     frames = {
         "2024-25": split_frame("2024-25"),
         "2025-26": split_frame("2025-26", start=1000),
     }
+    monkeypatch.setattr(logistic_ablation, "load_model_games", lambda season: frames[season])
 
-    splits = lr.randomized_evaluation_splits(
+    splits = logistic_ablation.randomized_evaluation_splits(
         ["2024-25", "2025-26"],
         test_size=0.25,
         repeats=2,
         seed=11,
-        load_games=lambda season: frames[season],
     )
 
     assert [split.label for split in splits] == [
@@ -297,12 +302,11 @@ def test_randomized_evaluation_splits_are_disjoint_and_repeatable() -> None:
         assert not train_ids.intersection(eval_ids)
         assert len(train_ids | eval_ids) == 24
 
-    repeated = lr.randomized_evaluation_splits(
+    repeated = logistic_ablation.randomized_evaluation_splits(
         ["2024-25", "2025-26"],
         test_size=0.25,
         repeats=2,
         seed=11,
-        load_games=lambda season: frames[season],
     )
     assert (
         splits[0].eval_data["SPLIT_ROW_ID"].tolist()
@@ -317,9 +321,9 @@ def test_run_ablation_supports_randomized_split_strategy(
         "2024-25": split_frame("2024-25"),
         "2025-26": split_frame("2025-26", start=1000),
     }
-    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+    monkeypatch.setattr(logistic_ablation, "load_model_games", lambda season: frames[season])
 
-    baseline, ablations = lr.run_ablation(
+    baseline, ablations = logistic_ablation.run_ablation(
         ["2024-25", "2025-26"],
         ["DIFF_POINT", "DIFF_REST"],
         min_train_seasons=1,
@@ -336,7 +340,7 @@ def test_run_ablation_supports_randomized_split_strategy(
         "random eval 2/2",
     }
 
-    report = lr.format_ablation_report(
+    report = logistic_ablation.format_ablation_report(
         ["2024-25", "2025-26"],
         ["DIFF_POINT", "DIFF_REST"],
         baseline,
@@ -354,9 +358,9 @@ def test_run_diagnostics_reports_calibration_selective_and_upsets(
         "2024-25": split_frame("2024-25"),
         "2025-26": split_frame("2025-26", start=1000),
     }
-    monkeypatch.setattr(lr, "load_model_games", lambda season: frames[season])
+    monkeypatch.setattr(logistic_ablation, "load_model_games", lambda season: frames[season])
 
-    diagnostics = lr.run_diagnostics(
+    diagnostics = logistic_diagnostics.run_diagnostics(
         ["2024-25", "2025-26"],
         ["DIFF_POINT", "DIFF_REST"],
         min_train_seasons=1,
@@ -373,7 +377,7 @@ def test_run_diagnostics_reports_calibration_selective_and_upsets(
         abs=1e-2,
     )
 
-    report = lr.format_diagnostics_report(diagnostics)
+    report = logistic_diagnostics.format_diagnostics_report(diagnostics)
     assert "Walk-Forward Diagnostics" in report
     assert "Calibration" in report
     assert "Selective prediction" in report
