@@ -11,7 +11,7 @@ from nba_predictor.evaluation import (
     format_evaluation,
     format_game_predictions,
 )
-from nba_predictor.models.features import read_feature_file
+from nba_predictor.models.features import read_feature_file, resolve_feature_columns
 from nba_predictor.models.lstm import (
     DEFAULT_EPOCHS,
     DEFAULT_HIDDEN_SIZE,
@@ -52,6 +52,7 @@ __all__ = [
     "parse_train_args",
     "predict_main",
     "read_feature_file",
+    "resolve_sequence_features",
     "save_model",
     "train_lstm",
     "train_lstm_for_seasons",
@@ -60,24 +61,19 @@ __all__ = [
 
 
 def resolve_sequence_features(args: argparse.Namespace) -> list[str]:
-    if args.features and args.features_file:
-        raise ValueError("Use either --features or --features-file, not both")
-    if args.features:
-        return args.features
-    if args.features_file:
-        return read_feature_file(args.features_file)
-    return DEFAULT_SEQUENCE_FEATURES
+    return resolve_feature_columns(args, default=DEFAULT_SEQUENCE_FEATURES)
 
 
 def train_lstm(
     season: str,
     feature_columns: list[str] | None,
-    sequence_length: int,
-    min_history: int,
-    hidden_size: int,
-    epochs: int,
-    validation_fraction: float,
-    patience: int,
+    *,
+    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
+    min_history: int = DEFAULT_MIN_HISTORY,
+    hidden_size: int = DEFAULT_HIDDEN_SIZE,
+    epochs: int = DEFAULT_EPOCHS,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    patience: int = DEFAULT_PATIENCE,
 ) -> LSTMModel:
     return _train_lstm(
         season,
@@ -94,12 +90,13 @@ def train_lstm(
 def train_lstm_for_seasons(
     seasons: list[str],
     feature_columns: list[str],
-    sequence_length: int,
-    min_history: int,
-    hidden_size: int,
-    epochs: int,
-    validation_fraction: float,
-    patience: int,
+    *,
+    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
+    min_history: int = DEFAULT_MIN_HISTORY,
+    hidden_size: int = DEFAULT_HIDDEN_SIZE,
+    epochs: int = DEFAULT_EPOCHS,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    patience: int = DEFAULT_PATIENCE,
 ) -> LSTMModel:
     return _train_lstm_for_seasons(
         seasons,
@@ -193,27 +190,19 @@ def train_main() -> None:
     args = parse_train_args()
     try:
         feature_columns = resolve_sequence_features(args)
+        hyperparameters = {
+            "sequence_length": args.sequence_length,
+            "min_history": args.min_history,
+            "hidden_size": args.hidden_size,
+            "epochs": args.epochs,
+            "validation_fraction": args.validation_fraction,
+            "patience": args.patience,
+        }
         if len(args.seasons) == 1:
-            artifact = train_lstm(
-                args.seasons[0],
-                feature_columns,
-                args.sequence_length,
-                args.min_history,
-                args.hidden_size,
-                args.epochs,
-                args.validation_fraction,
-                args.patience,
-            )
+            artifact = train_lstm(args.seasons[0], feature_columns, **hyperparameters)
         else:
             artifact = train_lstm_for_seasons(
-                args.seasons,
-                feature_columns,
-                args.sequence_length,
-                args.min_history,
-                args.hidden_size,
-                args.epochs,
-                args.validation_fraction,
-                args.patience,
+                args.seasons, feature_columns, **hyperparameters
             )
         save_model(artifact, args.output)
     except (FileNotFoundError, ValueError) as error:

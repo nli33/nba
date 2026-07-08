@@ -47,14 +47,17 @@ def read_feature_file(path: Path) -> list[str]:
     return feature_columns
 
 
-def resolve_feature_columns(args: argparse.Namespace) -> list[str]:
+def resolve_feature_columns(
+    args: argparse.Namespace,
+    default: list[str] = DEFAULT_FEATURE_COLUMNS,
+) -> list[str]:
     if args.features and args.features_file:
         raise ValueError("Use either --features or --features-file, not both")
     if args.features:
         return args.features
     if args.features_file:
         return read_feature_file(args.features_file)
-    return DEFAULT_FEATURE_COLUMNS
+    return default
 
 
 def validate_feature_columns(model_games: pd.DataFrame, feature_columns: list[str]) -> None:
