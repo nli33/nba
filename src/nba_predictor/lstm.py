@@ -16,8 +16,10 @@ from nba_predictor.models.lstm import (
     DEFAULT_EPOCHS,
     DEFAULT_HIDDEN_SIZE,
     DEFAULT_MIN_HISTORY,
+    DEFAULT_PATIENCE,
     DEFAULT_SEQUENCE_FEATURES,
     DEFAULT_SEQUENCE_LENGTH,
+    DEFAULT_VALIDATION_FRACTION,
     LSTMEvaluation,
     LSTMModel,
     LSTMPredictor,
@@ -74,6 +76,8 @@ def train_lstm(
     min_history: int,
     hidden_size: int,
     epochs: int,
+    validation_fraction: float,
+    patience: int,
 ) -> LSTMModel:
     return _train_lstm(
         season,
@@ -82,6 +86,8 @@ def train_lstm(
         min_history=min_history,
         hidden_size=hidden_size,
         epochs=epochs,
+        validation_fraction=validation_fraction,
+        patience=patience,
     )
 
 
@@ -92,6 +98,8 @@ def train_lstm_for_seasons(
     min_history: int,
     hidden_size: int,
     epochs: int,
+    validation_fraction: float,
+    patience: int,
 ) -> LSTMModel:
     return _train_lstm_for_seasons(
         seasons,
@@ -100,6 +108,8 @@ def train_lstm_for_seasons(
         min_history=min_history,
         hidden_size=hidden_size,
         epochs=epochs,
+        validation_fraction=validation_fraction,
+        patience=patience,
     )
 
 
@@ -134,7 +144,20 @@ def add_model_hyperparameters(parser: argparse.ArgumentParser) -> None:
         "--epochs",
         type=int,
         default=DEFAULT_EPOCHS,
-        help="Number of training epochs.",
+        help="Maximum number of training epochs (upper bound when early stopping).",
+    )
+    parser.add_argument(
+        "--validation-fraction",
+        type=float,
+        default=DEFAULT_VALIDATION_FRACTION,
+        help="Fraction of the most recent training games held out for early-stopping "
+        "validation. Set to 0 to train for exactly --epochs with no validation.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=DEFAULT_PATIENCE,
+        help="Stop after this many epochs without validation-log-loss improvement.",
     )
 
 
@@ -178,6 +201,8 @@ def train_main() -> None:
                 args.min_history,
                 args.hidden_size,
                 args.epochs,
+                args.validation_fraction,
+                args.patience,
             )
         else:
             artifact = train_lstm_for_seasons(
@@ -187,6 +212,8 @@ def train_main() -> None:
                 args.min_history,
                 args.hidden_size,
                 args.epochs,
+                args.validation_fraction,
+                args.patience,
             )
         save_model(artifact, args.output)
     except (FileNotFoundError, ValueError) as error:

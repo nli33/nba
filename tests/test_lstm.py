@@ -106,3 +106,43 @@ def test_train_and_evaluate_learns_stronger_team() -> None:
     )
     # The outcome is fully determined by team strength; the model should learn it.
     assert evaluation.accuracy_when_predicted > 0.9
+
+
+def test_training_holds_out_validation_and_early_stops() -> None:
+    model_games, team_features = build_frames()
+    artifact = lstm.train_lstm_from_frames(
+        model_games,
+        team_features,
+        "2024-25",
+        FEATURES,
+        sequence_length=5,
+        min_history=3,
+        hidden_size=16,
+        epochs=50,
+        validation_fraction=0.2,
+        patience=3,
+    )
+
+    assert artifact.validation_games > 0
+    assert artifact.validation_log_loss is not None
+    # Early stopping keeps an epoch at or before the max.
+    assert 1 <= artifact.epochs_trained <= 50
+
+
+def test_validation_fraction_zero_trains_fixed_epochs() -> None:
+    model_games, team_features = build_frames()
+    artifact = lstm.train_lstm_from_frames(
+        model_games,
+        team_features,
+        "2024-25",
+        FEATURES,
+        sequence_length=5,
+        min_history=3,
+        hidden_size=16,
+        epochs=12,
+        validation_fraction=0.0,
+    )
+
+    assert artifact.validation_games == 0
+    assert artifact.validation_log_loss is None
+    assert artifact.epochs_trained == 12

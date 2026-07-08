@@ -53,6 +53,8 @@ DEFAULT_HIDDEN_SIZE = 32
 DEFAULT_EPOCHS = 20
 DEFAULT_BATCH_SIZE = 64
 DEFAULT_LEARNING_RATE = 1e-3
+DEFAULT_VALIDATION_FRACTION = 0.15
+DEFAULT_PATIENCE = 5
 RANDOM_SEED = 0
 
 
@@ -232,6 +234,9 @@ class LSTMModel:
     scaler: SequenceScaler
     games_available: int
     games_trained: int
+    epochs_trained: int = DEFAULT_EPOCHS
+    validation_games: int = 0
+    validation_log_loss: float | None = None
 
     @property
     def games_dropped(self) -> int:
@@ -277,13 +282,35 @@ def _home_win_probabilities(
         return torch.sigmoid(logits).numpy()
 
 
+def _validation_loss(
+    module: GameSequenceLSTM,
+    home: torch.Tensor,
+    away: torch.Tensor,
+    labels: torch.Tensor,
+    loss_fn: nn.Module,
+) -> float:
+    module.eval()
+    with torch.no_grad():
+        loss = loss_fn(module(home, away), labels)
+    module.train()
+    return float(loss)
+
+
 def fit_lstm_module(
     dataset: SequenceDataset,
     hidden_size: int,
     epochs: int,
     batch_size: int,
     learning_rate: float,
-) -> GameSequenceLSTM:
+    validation: SequenceDataset | None = None,
+    patience: int = DEFAULT_PATIENCE,
+) -> tuple[GameSequenceLSTM, int, float | None]:
+    """Fit the LSTM, returning the module, the epoch kept, and its validation loss.
+
+    With a ``validation`` set, training runs up to ``epochs`` and keeps the weights
+    from the epoch with the lowest validation log loss (early stopping with
+    ``patience``). Without one, it trains for exactly ``epochs`` (the prior behavior).
+    """
     torch.manual_seed(RANDOM_SEED)
     module = GameSequenceLSTM(dataset.home.shape[2], hidden_size)
     optimizer = torch.optim.Adam(module.parameters(), lr=learning_rate)
@@ -293,9 +320,19 @@ def fit_lstm_module(
     away = torch.from_numpy(dataset.away).float()
     labels = torch.from_numpy(dataset.labels).float()
 
+    if validation is not None:
+        val_home = torch.from_numpy(validation.home).float()
+        val_away = torch.from_numpy(validation.away).float()
+        val_labels = torch.from_numpy(validation.labels).float()
+
     generator = torch.Generator().manual_seed(RANDOM_SEED)
+    best_val_loss = float("inf")
+    best_state: dict[str, Any] | None = None
+    best_epoch = epochs
+    epochs_without_improvement = 0
+
     module.train()
-    for _ in range(epochs):
+    for epoch in range(1, epochs + 1):
         order = torch.randperm(len(labels), generator=generator)
         for start in range(0, len(order), batch_size):
             batch = order[start : start + batch_size]
@@ -304,8 +341,60 @@ def fit_lstm_module(
             loss = loss_fn(logits, labels[batch])
             loss.backward()
             optimizer.step()
+
+        if validation is None:
+            continue
+
+        val_loss = _validation_loss(module, val_home, val_away, val_labels, loss_fn)
+        if val_loss < best_val_loss - 1e-4:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            best_state = {
+                key: value.detach().clone()
+                for key, value in module.state_dict().items()
+            }
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                break
+
+    if validation is not None and best_state is not None:
+        module.load_state_dict(best_state)
+        module.eval()
+        return module, best_epoch, best_val_loss
+
     module.eval()
-    return module
+    return module, epochs, None
+
+
+def _split_off_validation(
+    dataset: SequenceDataset, validation_fraction: float
+) -> tuple[SequenceDataset, SequenceDataset | None]:
+    """Hold out the most recent ``validation_fraction`` of samples for validation.
+
+    Samples arrive in chronological order, so the tail is the latest games — a
+    leakage-free validation set that mirrors predicting a future stretch.
+    """
+    total = len(dataset.labels)
+    validation_count = round(total * validation_fraction)
+    if validation_fraction <= 0 or not 0 < validation_count < total:
+        return dataset, None
+
+    split = total - validation_count
+    train = SequenceDataset(
+        dataset.home[:split],
+        dataset.away[:split],
+        dataset.labels[:split],
+        dataset.games_available,
+    )
+    validation = SequenceDataset(
+        dataset.home[split:],
+        dataset.away[split:],
+        dataset.labels[split:],
+        dataset.games_available,
+    )
+    return train, validation
 
 
 def train_lstm_from_frames(
@@ -319,17 +408,27 @@ def train_lstm_from_frames(
     epochs: int = DEFAULT_EPOCHS,
     batch_size: int = DEFAULT_BATCH_SIZE,
     learning_rate: float = DEFAULT_LEARNING_RATE,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    patience: int = DEFAULT_PATIENCE,
 ) -> LSTMModel:
     store = build_sequence_store(team_features, feature_columns)
     scaler = fit_sequence_scaler(store)
+    ordered_games = model_games.sort_values(["GAME_DATE", "GAME_ID"])
     dataset = build_dataset(
-        model_games, store, scaler, sequence_length, min_history
+        ordered_games, store, scaler, sequence_length, min_history
     )
     if len(dataset.labels) == 0:
         raise ValueError(f"No complete training sequences found for {train_label}")
 
-    module = fit_lstm_module(
-        dataset, hidden_size, epochs, batch_size, learning_rate
+    train_dataset, validation = _split_off_validation(dataset, validation_fraction)
+    module, epochs_trained, validation_log_loss = fit_lstm_module(
+        train_dataset,
+        hidden_size,
+        epochs,
+        batch_size,
+        learning_rate,
+        validation=validation,
+        patience=patience,
     )
     return LSTMModel(
         train_season=train_label,
@@ -340,7 +439,10 @@ def train_lstm_from_frames(
         state_dict={key: value.clone() for key, value in module.state_dict().items()},
         scaler=scaler,
         games_available=dataset.games_available,
-        games_trained=len(dataset.labels),
+        games_trained=len(train_dataset.labels),
+        epochs_trained=epochs_trained,
+        validation_games=0 if validation is None else len(validation.labels),
+        validation_log_loss=validation_log_loss,
     )
 
 
@@ -351,6 +453,8 @@ def train_lstm(
     min_history: int = DEFAULT_MIN_HISTORY,
     hidden_size: int = DEFAULT_HIDDEN_SIZE,
     epochs: int = DEFAULT_EPOCHS,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    patience: int = DEFAULT_PATIENCE,
     load_games: Callable[[str], pd.DataFrame] = load_model_games,
     load_team_features: Callable[[str], pd.DataFrame] = load_team_game_features,
 ) -> LSTMModel:
@@ -366,6 +470,8 @@ def train_lstm(
         min_history=min_history,
         hidden_size=hidden_size,
         epochs=epochs,
+        validation_fraction=validation_fraction,
+        patience=patience,
     )
 
 
@@ -376,6 +482,8 @@ def train_lstm_for_seasons(
     min_history: int = DEFAULT_MIN_HISTORY,
     hidden_size: int = DEFAULT_HIDDEN_SIZE,
     epochs: int = DEFAULT_EPOCHS,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    patience: int = DEFAULT_PATIENCE,
     load_games: Callable[[str], pd.DataFrame] = load_model_games,
     load_team_features: Callable[[str], pd.DataFrame] = load_team_game_features,
 ) -> LSTMModel:
@@ -397,6 +505,8 @@ def train_lstm_for_seasons(
         min_history=min_history,
         hidden_size=hidden_size,
         epochs=epochs,
+        validation_fraction=validation_fraction,
+        patience=patience,
     )
 
 
@@ -544,6 +654,13 @@ def format_model_details(
         f"  Games available: {artifact.games_available:,}",
         f"  Games trained: {artifact.games_trained:,}",
         f"  Games dropped: {artifact.games_dropped:,}",
+        f"  Validation games: {artifact.validation_games:,}",
+        f"  Epochs kept: {artifact.epochs_trained}"
+        + (
+            f" (val log loss {artifact.validation_log_loss:.4f})"
+            if artifact.validation_log_loss is not None
+            else " (no validation)"
+        ),
         f"  Sequence length: {artifact.sequence_length}",
         f"  Min history: {artifact.min_history}",
         f"  Hidden size: {artifact.hidden_size}",

@@ -248,6 +248,21 @@ uv run nba-train-lstm 2023-24 \
 Feature columns are the team-level (non-prefixed) columns from
 `team_game_features.parquet`, for example `SEASON_TO_DATE_NET_RATING`.
 
+By default training holds out the most recent `--validation-fraction` (0.15) of the
+training games — the latest games by date, a leakage-free validation split — and keeps
+the epoch with the lowest validation log loss, early-stopping after `--patience` (5)
+epochs without improvement. `--epochs` is therefore the *maximum* number of epochs. This
+avoids over- or under-training the network; the training report prints how many epochs
+were kept and the validation log loss. For an untouched final estimate, evaluate on a
+season later than every training season (`nba-evaluate-lstm`). Set `--validation-fraction 0`
+to train for exactly `--epochs` with no validation (the prior behavior):
+
+```bash
+uv run nba-train-lstm 2021-22 2022-23 2023-24 \
+  --epochs 40 --validation-fraction 0.15 --patience 5 \
+  --output models/lstm_multi.pkl
+```
+
 Inspect, evaluate, or predict with a saved LSTM model:
 
 ```bash
